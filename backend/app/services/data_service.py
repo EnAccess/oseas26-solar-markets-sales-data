@@ -36,7 +36,7 @@ class DataService:
         with self._lock:
             if self.is_ready(code):
                 return
-            from ..ml.train import build_and_train
+            from ..api.ml.train import build_and_train
 
             logger.info("No artefacts for %s - running pipeline and training", code)
             try:

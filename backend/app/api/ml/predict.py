@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from ..config import Settings
+from ...config import Settings
 
 
 def predict_cells(model, cells: pd.DataFrame, features: list[str]) -> np.ndarray:

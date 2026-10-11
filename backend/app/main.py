@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from .api import cells, layers, models, statistics
+from .api import cells, grid, layers, models, statistics
 from .config import get_settings
 from .services.data_service import DataNotReadyError, get_data_service
 from nightlights.api.main import app as nasa_nightlights_app
@@ -46,7 +46,7 @@ async def not_ready_handler(_: Request, exc: DataNotReadyError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": f"Data is not ready: {exc}"})
 
 
-for module in (layers, cells, models, statistics):
+for module in (layers, cells, grid, models, statistics):
     app.include_router(module.router, prefix="/api")
 
 app.mount("/", nasa_nightlights_app)

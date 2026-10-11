@@ -1,6 +1,9 @@
 import axios from "axios";
 
-const http = axios.create({ baseURL: import.meta.env.VITE_API_URL || "", timeout: 60000 });
+const http = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || "",
+  timeout: 60000,
+});
 const get = (url, params) => http.get(url, { params }).then((r) => r.data);
 
 export const api = {
@@ -9,10 +12,18 @@ export const api = {
   layers: () => get("/api/layers"),
   layer: (id, country) => get(`/api/map/layer/${id}`, { country }),
   infrastructure: (country) => get("/api/map/infrastructure", { country }),
+  gridCheck: (lat, lon, radiusKm, country) =>
+    get("/api/grid/check", {
+      lat,
+      lon,
+      radius_km: radiusKm,
+      country,
+    }),
   cell: (id, threshold) => get(`/api/cells/${id}`, { threshold }),
   performance: (country) => get("/api/model/performance", { country }),
   features: (country) => get("/api/model/features", { country }),
-  statistics: (country, threshold) => get("/api/statistics", { country, threshold }),
+  statistics: (country, threshold) =>
+    get("/api/statistics", { country, threshold }),
   gogla: (country) => get("/api/gogla/comparison", { country }),
   dataSources: () => get("/api/data-sources"),
   limitations: () => get("/api/limitations"),
