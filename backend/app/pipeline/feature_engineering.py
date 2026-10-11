@@ -53,6 +53,10 @@ def build_feature_frame(grid: gpd.GeoDataFrame, raw: "RawLayers", country: Count
     df["population_total"] = df["population_density"] * res_km**2
     df["nighttime_radiance"] = np.asarray(raw.nighttime_radiance, dtype=float)
     df["relative_wealth"] = np.asarray(raw.relative_wealth, dtype=float)
+    if raw.relative_wealth_observed is not None:
+        df["relative_wealth_observed"] = raw.relative_wealth_observed.astype(bool)
+    else:
+        df["relative_wealth_observed"] = True  # demo mode: all cells treated as observed
     df["solar_resource"] = np.asarray(raw.solar_resource, dtype=float)
     df["distance_to_grid_km"] = distance_to_geoms_km(grid, raw.grid_lines, country.utm_epsg)
     df["grid_presence"] = presence_in_cell(grid, raw.grid_lines)

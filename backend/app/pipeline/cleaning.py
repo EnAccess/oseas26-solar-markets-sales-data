@@ -15,6 +15,7 @@ CELL_COLUMNS = [
     "cell_id", "row", "col", "lon", "lat", "population_density", "population_total",
     "nighttime_radiance", "relative_wealth", "solar_resource", "distance_to_grid_km",
     "grid_presence", "distance_to_minigrid_km", "minigrid_presence", "settlement_density",
+    "relative_wealth_observed",
 ]
 
 
@@ -28,20 +29,29 @@ def clean_cells(df: pd.DataFrame) -> pd.DataFrame:
     """Fill gaps with the column median and clip physically impossible values."""
     validate_columns(df, CELL_COLUMNS, "cell features")
     out = df.copy()
-    numeric = [c for c in CELL_COLUMNS if c not in {"cell_id"}]
+
+    # Preserve boolean flag columns untouched.
+    bool_cols = {"relative_wealth_observed"}
+    numeric = [c for c in CELL_COLUMNS if c not in {"cell_id"} and c not in bool_cols]
+
     for col in numeric:
         n_missing = int(out[col].isna().sum())
         if n_missing:
             logger.warning("Filling %d missing values in '%s' with the median", n_missing, col)
             out[col] = out[col].fillna(out[col].median() if out[col].notna().any() else 0.0)
+
     for col in ["population_density", "population_total", "nighttime_radiance",
                 "distance_to_grid_km", "distance_to_minigrid_km", "settlement_density"]:
         out[col] = out[col].clip(lower=0)
     out["solar_resource"] = out["solar_resource"].clip(lower=0.1)
     for col in ["grid_presence", "minigrid_presence"]:
         out[col] = (out[col] > 0).astype(int)
-    return out
 
+    # Ensure the flag column is proper bool, not object/float.
+    if "relative_wealth_observed" in out.columns:
+        out["relative_wealth_observed"] = out["relative_wealth_observed"].astype(bool)
+
+    return out
 
 def clean_surveys(df: pd.DataFrame) -> pd.DataFrame:
     """Normalise survey records. Expected columns: latitude, longitude, solar_ownership.

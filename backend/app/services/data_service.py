@@ -25,28 +25,67 @@ class DataService:
         self._cache: dict[str, dict] = {}
         self._lock = threading.Lock()
 
+    def _cells_path(self, code: str):
+        """Canonical cell-features file written by pipeline/build.py."""
+        return self.settings.processed_path(code) / "cells_features.csv"
+
+    def _meta_path(self, code: str):
+        return self.settings.processed_path(code) / "meta.json"
+
     def is_ready(self, code: str) -> bool:
-        return (self.settings.outputs_path(code) / "cells.csv").exists() and \
-               (self.settings.models_path(code) / "metrics.json").exists()
+        """Ready if the canonical cells CSV + meta exist.
+
+        We intentionally do NOT require models/metrics.json here. The API can
+        serve real feature data (population, wealth, etc.) without a trained
+        model; the model-dependent layers will simply report as unavailable.
+        """
+        return self._cells_path(code).exists() and self._meta_path(code).exists()
 
     def ensure(self, code: str) -> None:
-        """Build dataset + train if artefacts are missing (first start)."""
+        """Build the dataset if it is missing.
+
+        This runs the data pipeline only, never model training. Training is a
+        separate, explicit step (python -m app.ml.train) that must be triggered
+        by whoever owns the model pipeline.
+        """
         if self.is_ready(code):
             return
         with self._lock:
             if self.is_ready(code):
                 return
+            from ..pipeline.build import build_dataset
             from ..api.ml.train import build_and_train
 
-            logger.info("No artefacts for %s - running pipeline and training", code)
+            logger.info("No dataset for %s - running build pipeline", code)
             try:
-                build_and_train(self.settings, code)
+                build_dataset(self.settings, code)
             except Exception as exc:
                 raise DataNotReadyError(str(exc)) from exc
 
     def reload(self, code: str) -> None:
         self._cache.pop(code, None)
 
+    @staticmethod
+    def _optional_json(path):
+        return json.loads(path.read_text()) if path.exists() else None
+
+    def _load(self, code: str) -> dict:
+        code = code.upper()
+        if code not in self._cache:
+            self.ensure(code)
+            pdir = self.settings.processed_path(code)
+            mdir = self.settings.models_path(code)
+            meta = json.loads((pdir / "meta.json").read_text())
+            self._cache[code] = {
+                "cells": pd.read_csv(self._cells_path(code)),
+                "meta": meta,
+                "spec": GridSpec(**meta["grid_spec"]),
+                # Optional artefacts: present only after an explicit training run.
+                "metrics": self._optional_json(mdir / "metrics.json"),
+                "importance": self._optional_json(mdir / "feature_importance.json"),
+                "infrastructure": self._optional_json(pdir / "infrastructure.geojson"),
+                "gogla": pd.read_csv(pdir / "gogla.csv") if (pdir / "gogla.csv").exists() else None,
+            }
     def _save_nightlight_values(self, code: str, cells: pd.DataFrame, meta: dict) -> None:
         values = dict(zip(cells["cell_id"], cells["nighttime_radiance"]))
         pdir, odir = self.settings.processed_path(code), self.settings.outputs_path(code)
@@ -129,13 +168,13 @@ class DataService:
     def spec(self, code: str) -> GridSpec:
         return self._load(code)["spec"]
 
-    def metrics(self, code: str) -> dict:
+    def metrics(self, code: str) -> dict | None:
         return self._load(code)["metrics"]
 
-    def importance(self, code: str) -> dict:
+    def importance(self, code: str) -> dict | None:
         return self._load(code)["importance"]
 
-    def infrastructure(self, code: str) -> dict:
+    def infrastructure(self, code: str) -> dict | None:
         return self._load(code)["infrastructure"]
 
     def gogla(self, code: str) -> pd.DataFrame | None:
