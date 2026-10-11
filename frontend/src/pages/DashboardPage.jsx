@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AsyncView, { ErrorBox, Loading } from "../components/AsyncView";
 import CellPanel from "../components/CellPanel";
 import ConceptBand from "../components/ConceptBand";
@@ -10,7 +10,7 @@ import StatCards from "../components/StatCards";
 import { useApi } from "../hooks/useApi";
 import { useDebounce } from "../hooks/useDebounce";
 import { api } from "../services/api";
-import { ADMIN_LEVELS, buildAdminLayer } from "../utils/adminAreas";
+import { ADMIN_LEVELS, boundsForAdminFeatures, buildAdminLayer } from "../utils/adminAreas";
 
 export default function DashboardPage({
   country,
@@ -43,6 +43,16 @@ export default function DashboardPage({
     [country, debounced],
   );
   const countryInfo = countries.find((c) => c.code === country);
+  const activeLayerData = layerData.status === "done" ? layerData.data : null;
+  const selectedFeatures = useMemo(
+    () => activeLayerData?.features.filter((feature) => selectedAreas.has(feature.properties.admin_key)) || [],
+    [activeLayerData, selectedAreas],
+  );
+  const selectionBounds = useMemo(
+    () => boundsForAdminFeatures(selectedFeatures),
+    [selectedFeatures],
+  );
+  const selectionZoom = { province: 8, district: 9, sector: 10, cell: 12, village: 14 }[adminLevel];
   const toggleArea = (key) => {
     setSelectedAreas((current) => {
       const next = new Set(current);
@@ -79,10 +89,12 @@ export default function DashboardPage({
 
         <div className="map-wrap">
           <MapView
-            layerData={layerData.status === "done" ? layerData.data : null}
+            layerData={activeLayerData}
             infra={infra.data}
             showInfra={showInfra}
             bounds={meta.bounds}
+            selectionBounds={selectionBounds}
+            selectionZoom={selectionZoom}
             center={countryInfo?.center ?? [-1.95, 29.87]}
             zoom={countryInfo?.zoom ?? 8}
             opacity={opacity}
@@ -114,9 +126,11 @@ export default function DashboardPage({
           <AdminAreaReport
             adminLevel={adminLevel}
             availableLayers={layers.data || []}
-            layerData={layerData.status === "done" ? layerData.data : null}
+            layerData={activeLayerData}
             selectedKeys={selectedAreas}
+            selectedFeatures={selectedFeatures}
             country={country}
+            onClearSelection={() => setSelectedAreas(new Set())}
           />
         </div>
       </div>

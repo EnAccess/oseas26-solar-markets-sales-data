@@ -10,9 +10,13 @@ import { PALETTES, rampColor, logNormalizer } from "../utils/colors";
 import { fmtNum } from "../utils/format";
 import NightLightsGlow from "./NightLightsGlow";
 
-function FitBounds({ bounds }) {
+function FitBounds({ bounds, selectionBounds, selectionZoom }) {
   const map = useMap();
   useEffect(() => {
+    if (selectionBounds) {
+      map.fitBounds(selectionBounds, { padding: [28, 28], maxZoom: selectionZoom });
+      return;
+    }
     if (bounds)
       map.fitBounds(
         [
@@ -21,7 +25,7 @@ function FitBounds({ bounds }) {
         ],
         { padding: [8, 8] },
       );
-  }, [bounds, map]);
+  }, [bounds, map, selectionBounds, selectionZoom]);
   return null;
 }
 
@@ -30,6 +34,8 @@ export default function MapView({
   infra,
   showInfra,
   bounds,
+  selectionBounds,
+  selectionZoom,
   center,
   zoom,
   opacity,
@@ -64,19 +70,19 @@ export default function MapView({
 
       if (isGlow) {
         return {
-          fillColor: "transparent",
-          fillOpacity: 0.01,
+          fillColor: selected ? "#ffd166" : "transparent",
+          fillOpacity: selected ? 0.72 : 0.01,
           weight: selected ? 3 : 0,
-          color: selected ? "#0f1b2e" : "transparent",
+          color: selected ? "#102a36" : "transparent",
           opacity: selected ? 1 : 0,
         };
       }
 
       return {
-        fillColor: rampColor(stops, t),
-        fillOpacity: faded ? opacity * 0.2 : opacity,
+        fillColor: selected ? "#ffd166" : rampColor(stops, t),
+        fillOpacity: selected ? 0.88 : faded ? opacity * 0.2 : opacity,
         weight: selected ? 3 : 0.4,
-        color: selected ? "#0f1b2e" : "#ffffff",
+        color: selected ? "#102a36" : "#ffffff",
         opacity: selected ? 1 : 0.6,
       };
     };
@@ -136,7 +142,7 @@ export default function MapView({
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution="&copy; OpenStreetMap contributors"
       />
-      <FitBounds bounds={bounds} />
+      <FitBounds bounds={bounds} selectionBounds={selectionBounds} selectionZoom={selectionZoom} />
       {isGlow && layerData && <NightLightsGlow data={layerData} opacity={opacity} />}
       {layerData && (
         <GeoJSON

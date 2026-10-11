@@ -182,6 +182,29 @@ export function sumSelectedArea(features) {
   return features.reduce((sum, feature) => sum + (feature.properties.area_km2 || 0), 0);
 }
 
+export function boundsForAdminFeatures(features) {
+  let minLongitude = Infinity;
+  let minLatitude = Infinity;
+  let maxLongitude = -Infinity;
+  let maxLatitude = -Infinity;
+
+  const visit = (coordinates) => {
+    if (!Array.isArray(coordinates)) return;
+    if (coordinates.length >= 2 && typeof coordinates[0] === "number") {
+      minLongitude = Math.min(minLongitude, coordinates[0]);
+      minLatitude = Math.min(minLatitude, coordinates[1]);
+      maxLongitude = Math.max(maxLongitude, coordinates[0]);
+      maxLatitude = Math.max(maxLatitude, coordinates[1]);
+      return;
+    }
+    coordinates.forEach(visit);
+  };
+
+  features.forEach((feature) => visit(feature.geometry?.coordinates));
+  if (!Number.isFinite(minLongitude)) return null;
+  return [[minLatitude, minLongitude], [maxLatitude, maxLongitude]];
+}
+
 export function summarizeSelectedLayers(layerResults, selectedKeys) {
   return layerResults.map(({ catalog, layer }) => {
     const selected = layer.features.filter((feature) => selectedKeys.has(feature.properties.admin_key));
