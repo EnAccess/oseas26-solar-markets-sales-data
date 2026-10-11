@@ -71,13 +71,47 @@ class DataService:
 
     def _load(self, code: str) -> dict:
         code = code.upper()
+        if code in self._cache:
+            return self._cache[code]
         if code not in self._cache:
             self.ensure(code)
             pdir = self.settings.processed_path(code)
             mdir = self.settings.models_path(code)
+            odir = self.settings.outputs_path(code)
             meta = json.loads((pdir / "meta.json").read_text())
+            cells = pd.read_csv(self._cells_path(code))
+            model_cells_path = odir / "cells.csv"
+            if model_cells_path.exists():
+                model_cells = pd.read_csv(model_cells_path)
+                model_columns = [
+                    column for column in (
+                        "predicted_solar_penetration",
+                        "energy_need_score",
+                        "market_gap_score",
+                        "observed_solar_penetration",
+                    )
+                    if column in model_cells.columns
+                ]
+                if (
+                    model_columns
+                    and "cell_id" in model_cells.columns
+                    and model_cells["cell_id"].is_unique
+                    and cells["cell_id"].is_unique
+                    and set(model_cells["cell_id"]) == set(cells["cell_id"])
+                ):
+                    cells = cells.merge(
+                        model_cells[["cell_id", *model_columns]],
+                        on="cell_id",
+                        how="left",
+                        validate="one_to_one",
+                    )
+                elif model_columns:
+                    logger.warning(
+                        "Ignoring model outputs for %s because cell IDs do not match the feature dataset",
+                        code,
+                    )
             self._cache[code] = {
-                "cells": pd.read_csv(self._cells_path(code)),
+                "cells": cells,
                 "meta": meta,
                 "spec": GridSpec(**meta["grid_spec"]),
                 # Optional artefacts: present only after an explicit training run.
@@ -86,6 +120,8 @@ class DataService:
                 "infrastructure": self._optional_json(pdir / "infrastructure.geojson"),
                 "gogla": pd.read_csv(pdir / "gogla.csv") if (pdir / "gogla.csv").exists() else None,
             }
+            return self._cache[code]
+
     def _save_nightlight_values(self, code: str, cells: pd.DataFrame, meta: dict) -> None:
         values = dict(zip(cells["cell_id"], cells["nighttime_radiance"]))
         pdir, odir = self.settings.processed_path(code), self.settings.outputs_path(code)
@@ -115,29 +151,6 @@ class DataService:
             "nighttime_radiance is sourced from NASA LAADS."
         )
         (pdir / "meta.json").write_text(json.dumps(meta, indent=2))
-
-    def _load(self, code: str) -> dict:
-        code = code.upper()
-        if code in self._cache:
-            return self._cache[code]
-        self.ensure(code)
-        with self._lock:
-            if code not in self._cache:
-                pdir, mdir, odir = (self.settings.processed_path(code), self.settings.models_path(code),
-                                    self.settings.outputs_path(code))
-                meta = json.loads((pdir / "meta.json").read_text())
-                cells = pd.read_csv(odir / "cells.csv")
-                gogla = pd.read_csv(pdir / "gogla.csv") if (pdir / "gogla.csv").exists() else None
-                self._cache[code] = {
-                    "cells": cells,
-                    "meta": meta,
-                    "spec": GridSpec(**meta["grid_spec"]),
-                    "metrics": json.loads((mdir / "metrics.json").read_text()),
-                    "importance": json.loads((mdir / "feature_importance.json").read_text()),
-                    "infrastructure": json.loads((pdir / "infrastructure.geojson").read_text()),
-                    "gogla": gogla,
-                }
-        return self._cache[code]
 
     def cells(self, code: str, include_nightlights: bool = False) -> pd.DataFrame:
         code = code.upper()

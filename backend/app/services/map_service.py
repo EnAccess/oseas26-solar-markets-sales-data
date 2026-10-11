@@ -57,11 +57,6 @@ _BASE = Path(__file__).resolve().parents[2] / "data" / "processed" / "RW"
 _CELLS_SURVEY = _BASE / "cells_with_survey.csv"
 
 
-def layer_catalog() -> list[dict]:
-    return [
-        {"id": k, "name": v["name"], "description": v["description"], "unit": v["unit"]}
-        for k, v in LAYERS.items()
-
 def available_layers(cells: pd.DataFrame) -> dict[str, dict]:
     """Return only layers whose source column is present in cells."""
     return {k: v for k, v in LAYERS.items() if v["column"] in cells.columns}
