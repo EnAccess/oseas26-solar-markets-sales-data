@@ -15,7 +15,7 @@ DATA_SOURCES = [
         "year": "Annual composites", "resolution": "~500 m (aggregated to the model grid)",
         "role": "Predictive feature: nighttime radiance",
         "limitations": "Cannot reliably detect small solar home systems or pico-solar products. Low light does not mean no solar.",
-        "demo_substitute": "Synthetic radiance driven by population and grid proximity.",
+        "demo_substitute": "NASA Black Marble radiance sampled from LAADS; only the other demo features are synthetic.",
     },
     {
         "id": "population", "name": "WorldPop / Meta HRSL population",

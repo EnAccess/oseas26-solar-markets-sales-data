@@ -557,3 +557,9 @@ td {
 .legend-numbers {
   font-weight: 600;
 }
+.legend-numbers { font-weight: 600; }
+.leaflet-glow-layer {
+  will-change: transform;
+}
+
+

@@ -18,7 +18,7 @@ def get_cell(cell_id: str, threshold: float | None = None, svc: DataService = De
     code = cell_id.split("_")[0].upper()
     if code not in COUNTRIES:
         raise HTTPException(404, f"Cell '{cell_id}' does not belong to a known country.")
-    cells = svc.cells(code)
+    cells = svc.cells(code, include_nightlights=True)
     match = cells[cells["cell_id"] == cell_id]
     if match.empty:
         raise HTTPException(404, f"Cell '{cell_id}' not found.")
