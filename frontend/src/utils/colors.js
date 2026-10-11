@@ -3,6 +3,9 @@ export const PALETTES = {
   market_gap: ["#fbf3dc", "#f4d98a", "#e8b04a", "#c97d1f", "#8a4a0c"],
   population: ["#f4f1f8", "#cfc3e3", "#a28ac6", "#7152a3", "#43276f"],
   grid: ["#eef2f6", "#c3cfdc", "#8ea1b8", "#56708f", "#2a3f5c"],
+
+ solar_resource: ["#edeff2", "#063881"],
+
   solar_resource: ["#fff6d8", "#fbe08a", "#f6c244", "#eb9b1d", "#c96a0b"],
   night_lights: [
     "#0b0724",
@@ -14,6 +17,7 @@ export const PALETTES = {
     "#fecb2f",
     "#f5f5c0",
   ],
+
 };
 
 const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));

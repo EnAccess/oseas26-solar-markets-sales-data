@@ -1,6 +1,8 @@
 """Map-ready layer definitions and GeoJSON builders."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
 from ..pipeline.export import cells_to_geojson
@@ -28,9 +30,9 @@ LAYERS: dict[str, dict] = {
         legend=("Near grid", "Medium", "Far from grid"),
     ),
     "solar_resource": dict(
-        name="Solar Resource", column="solar_resource", unit="kWh/m2/day", fixed=None,
-        description="Average global horizontal irradiation (GHI).",
-        legend=("Lower", "Medium", "Higher"),
+        name="Solar Households (survey)", column="solar_households", unit="households", fixed=None,
+        description="MTF survey households with a solar device. District totals mapped onto each 5 km grid cell.",
+        legend=("Few", "Medium", "Many"),
     ),
     "relative_wealth": dict(
         name="Relative Wealth", column="relative_wealth", unit="RWI", fixed=None,
@@ -50,6 +52,16 @@ LAYERS: dict[str, dict] = {
 }
 
 
+
+_BASE = Path(__file__).resolve().parents[2] / "data" / "processed" / "RW"
+_CELLS_SURVEY = _BASE / "cells_with_survey.csv"
+
+
+def layer_catalog() -> list[dict]:
+    return [
+        {"id": k, "name": v["name"], "description": v["description"], "unit": v["unit"]}
+        for k, v in LAYERS.items()
+
 def available_layers(cells: pd.DataFrame) -> dict[str, dict]:
     """Return only layers whose source column is present in cells."""
     return {k: v for k, v in LAYERS.items() if v["column"] in cells.columns}
@@ -60,10 +72,14 @@ def layer_catalog(cells: pd.DataFrame | None = None) -> list[dict]:
     return [
         {"id": k, "name": v["name"], "description": v["description"], "unit": v["unit"]}
         for k, v in src.items()
+
     ]
 
 
 def build_layer(cells: pd.DataFrame, deg: float, layer_id: str, is_demo: bool) -> dict:
+    if layer_id == "solar_resource":
+        return _build_solar_households_cells_layer(deg, is_demo)
+
     spec = LAYERS[layer_id]
     col = spec["column"]
     if col not in cells.columns:
@@ -77,14 +93,51 @@ def build_layer(cells: pd.DataFrame, deg: float, layer_id: str, is_demo: bool) -
         lo, hi = float(cells[col].quantile(0.02)), float(cells[col].quantile(0.98))
         if hi <= lo:
             hi = lo + 1e-6
+
     fc = cells_to_geojson(cells, deg, {"value": col})
     for f, cid in zip(fc["features"], cells["cell_id"]):
         f["properties"]["cell_id"] = cid
+
     fc["metadata"] = {
+
+        "layer": layer_id,
+        "name": spec["name"],
+        "unit": spec["unit"],
+        "description": spec["description"],
+        "min": round(lo, 4),
+        "max": round(hi, 4),
+
         "layer": layer_id, "name": spec["name"], "unit": spec["unit"],
         "description": spec["description"],
         "min": round(lo, 4), "max": round(hi, 4),
+
         "legend": {"low": spec["legend"][0], "mid": spec["legend"][1], "high": spec["legend"][2]},
+        "is_demo": is_demo,
+    }
+    return fc
+
+
+def _build_solar_households_cells_layer(deg: float, is_demo: bool) -> dict:
+    df = pd.read_csv(_CELLS_SURVEY).dropna(subset=["solar_households"]).reset_index(drop=True)
+
+    spec = LAYERS["solar_resource"]
+    lo = float(df["solar_households"].quantile(0.02))
+    hi = float(df["solar_households"].quantile(0.98))
+    if hi <= lo:
+        hi = lo + 1e-6
+
+    fc = cells_to_geojson(df, deg, {"value": "solar_households"})
+    for f, cid in zip(fc["features"], df["cell_id"]):
+        f["properties"]["cell_id"] = cid
+
+    fc["metadata"] = {
+        "layer": "solar_resource",
+        "name": spec["name"],
+        "unit": spec["unit"],
+        "description": spec["description"],
+        "min": round(lo, 4),
+        "max": round(hi, 4),
+        "legend": {"low": "Few", "mid": "Medium", "high": "Many"},
         "is_demo": is_demo,
     }
     return fc
