@@ -75,6 +75,22 @@ Three core deliverables (plus an optional prototype):
 - **Interactive prototype (optional):** a map in which priority zones are visible,
   inspectable, and traceable back to the layers that produced them.
 
+### Refreshing the live grid-distance layer
+
+The Rwanda `distance_to_grid_km` and `grid_presence` columns can be refreshed
+from mapped electricity infrastructure in OpenStreetMap through the Overpass
+API. From the repository root, run:
+
+```powershell
+python backend/scripts/update_grid_from_overpass.py
+```
+
+The script updates both `backend/data/processed/RW/cells_features.csv` and the
+served `backend/outputs/RW/cells.csv`, and recalculates only the grid-dependent
+energy-need and market-gap scores. OpenStreetMap coverage can be incomplete;
+the values represent mapped infrastructure, not a guarantee of a physical
+connection.
+
 ## Required knowledge
 
 ### Stack

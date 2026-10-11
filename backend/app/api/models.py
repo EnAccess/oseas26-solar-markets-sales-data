@@ -30,4 +30,4 @@ def features(code: str = Depends(country_code), svc: DataService = Depends(servi
 @router.get("/gogla/comparison", response_model=GoglaComparison)
 def gogla(code: str = Depends(country_code), svc: DataService = Depends(service_dep),
           settings: Settings = Depends(settings_dep)) -> GoglaComparison:
-    return prediction_service.gogla_comparison(svc.cells(code), svc.gogla(code), settings, svc.meta(code)["is_demo"])
+    return prediction_service.gogla_comparison(svc.cells(code, include_nightlights=False), svc.gogla(code), settings, svc.meta(code)["is_demo"])

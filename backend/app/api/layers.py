@@ -67,6 +67,8 @@ def map_layer(layer_name: str, code: str = Depends(country_code),
         )
     except map_service.LayerUnavailableError as exc:
         raise HTTPException(503, str(exc))
+    cells = svc.cells(code, include_nightlights=layer_name == "night_lights")
+    return map_service.build_layer(cells, svc.spec(code).deg, layer_name, svc.meta(code)["is_demo"])
 
 
 @router.get("/map/infrastructure", tags=["map"], summary="Grid lines and minigrids (GeoJSON)")
