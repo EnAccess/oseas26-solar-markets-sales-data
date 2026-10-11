@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import AsyncView, { ErrorBox, Loading } from "../components/AsyncView";
 import CellPanel from "../components/CellPanel";
 import ConceptBand from "../components/ConceptBand";
+import ExploreAssistant from "../components/ExploreAssistant";
 import Legend from "../components/Legend";
 import MapView from "../components/MapView";
 import Sidebar from "../components/Sidebar";
@@ -56,6 +57,14 @@ export default function DashboardPage({ country, setCountry, meta, countries }) 
 
       <AsyncView state={stats} label="Calculating statistics...">{(s) => <StatCards s={s} />}</AsyncView>
       <p className="muted disclaimer">{meta.disclaimer}</p>
+
+      <ExploreAssistant
+        layerData={layerData.status === "done" ? layerData.data : null}
+        stats={stats.status === "done" ? stats.data : null}
+        meta={layerData.status === "done" ? layerData.data.metadata : null}
+        selectedId={selected}
+        onJumpToCell={setSelected}
+      />
     </>
   );
 }
