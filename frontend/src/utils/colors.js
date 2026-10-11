@@ -4,9 +4,9 @@ export const PALETTES = {
   population: ["#f4f1f8", "#cfc3e3", "#a28ac6", "#7152a3", "#43276f"],
   grid: ["#eef2f6", "#c3cfdc", "#8ea1b8", "#56708f", "#2a3f5c"],
 
- solar_resource: ["#edeff2", "#063881"],
+ solar_resource: ["#edeff2", "#02337d"],
 
-  solar_resource: ["#fff6d8", "#fbe08a", "#f6c244", "#eb9b1d", "#c96a0b"],
+
   night_lights: [
     "#0b0724",
     "#2c115f",
