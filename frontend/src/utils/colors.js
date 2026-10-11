@@ -6,9 +6,9 @@ export const PALETTES = {
   grid: ["#eef2f6", "#c3cfdc", "#8ea1b8", "#56708f", "#2a3f5c"],
   relative_wealth: ["#a50026", "#d73027", "#fdae61", "#ffffbf", "#a6d96a", "#1a9850", "#006837"],
 
- solar_resource: ["#edeff2", "#063881"],
+ solar_resource: ["#edeff2", "#02337d"],
 
-  solar_resource: ["#fff6d8", "#fbe08a", "#f6c244", "#eb9b1d", "#c96a0b"],
+
   night_lights: [
     "#0b0724",
     "#2c115f",
