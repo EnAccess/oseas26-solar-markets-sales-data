@@ -52,15 +52,9 @@ LAYERS: dict[str, dict] = {
 }
 
 
-
 _BASE = Path(__file__).resolve().parents[2] / "data" / "processed" / "RW"
 _CELLS_SURVEY = _BASE / "cells_with_survey.csv"
 
-
-def layer_catalog() -> list[dict]:
-    return [
-        {"id": k, "name": v["name"], "description": v["description"], "unit": v["unit"]}
-        for k, v in LAYERS.items()
 
 def available_layers(cells: pd.DataFrame) -> dict[str, dict]:
     """Return only layers whose source column is present in cells."""
@@ -72,7 +66,6 @@ def layer_catalog(cells: pd.DataFrame | None = None) -> list[dict]:
     return [
         {"id": k, "name": v["name"], "description": v["description"], "unit": v["unit"]}
         for k, v in src.items()
-
     ]
 
 
@@ -99,18 +92,12 @@ def build_layer(cells: pd.DataFrame, deg: float, layer_id: str, is_demo: bool) -
         f["properties"]["cell_id"] = cid
 
     fc["metadata"] = {
-
         "layer": layer_id,
         "name": spec["name"],
         "unit": spec["unit"],
         "description": spec["description"],
         "min": round(lo, 4),
         "max": round(hi, 4),
-
-        "layer": layer_id, "name": spec["name"], "unit": spec["unit"],
-        "description": spec["description"],
-        "min": round(lo, 4), "max": round(hi, 4),
-
         "legend": {"low": spec["legend"][0], "mid": spec["legend"][1], "high": spec["legend"][2]},
         "is_demo": is_demo,
     }
