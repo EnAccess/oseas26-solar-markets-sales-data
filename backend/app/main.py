@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from .api import cells, layers, models, statistics
 from .config import get_settings
 from .services.data_service import DataNotReadyError, get_data_service
+from nightlights.api.main import app as nasa_nightlights_app
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("solar_market_reality")
@@ -36,7 +37,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_methods=["GET"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list,
+                   allow_methods=["GET", "POST"], allow_headers=["*"])
 
 
 @app.exception_handler(DataNotReadyError)
@@ -46,3 +48,5 @@ async def not_ready_handler(_: Request, exc: DataNotReadyError) -> JSONResponse:
 
 for module in (layers, cells, models, statistics):
     app.include_router(module.router, prefix="/api")
+
+app.mount("/", nasa_nightlights_app)

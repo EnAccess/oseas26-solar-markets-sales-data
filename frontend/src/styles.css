@@ -116,3 +116,8 @@ th, td { padding: .5rem .6rem; border-bottom: 1px solid var(--line); text-align:
   .bars li { grid-template-columns: 1fr 56px; } .bar-track { grid-column: 1 / -1; grid-row: 2; }
 }
 .legend-numbers { font-weight: 600; }
+.leaflet-glow-layer {
+  will-change: transform;
+}
+
+

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import { CircleMarker, GeoJSON, MapContainer, TileLayer, useMap } from "react-leaflet";
-import { PALETTES, rampColor } from "../utils/colors";
+import { PALETTES, rampColor, logNormalizer } from "../utils/colors";
 import { fmtNum } from "../utils/format";
+import NightLightsGlow from "./NightLightsGlow";
 
 function FitBounds({ bounds }) {
   const map = useMap();
@@ -16,15 +17,32 @@ export default function MapView({ layerData, infra, showInfra, bounds, center, z
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const meta = layerData?.metadata;
+  const isGlow = meta?.layer === "night_lights";
 
   const style = useMemo(() => {
     if (!meta) return () => ({});
     const stops = PALETTES[meta.layer];
+    const isLog = meta.layer === "night_lights";
+    const norm = isLog
+      ? logNormalizer(meta.min, meta.max)
+      : (v) => (v - meta.min) / (meta.max - meta.min);
+
     return (f) => {
       const v = f.properties.value;
-      const t = v == null ? null : (v - meta.min) / (meta.max - meta.min);
+      const t = v == null ? null : norm(v);
       const faded = meta.layer === "market_gap" && v != null && v < threshold;
       const selected = f.properties.cell_id === selectedId;
+
+      if (isGlow) {
+        return {
+          fillColor: "transparent",
+          fillOpacity: 0.01,
+          weight: selected ? 3 : 0,
+          color: selected ? "#0f1b2e" : "transparent",
+          opacity: selected ? 1 : 0,
+        };
+      }
+
       return {
         fillColor: rampColor(stops, t),
         fillOpacity: faded ? opacity * 0.2 : opacity,
@@ -33,9 +51,8 @@ export default function MapView({ layerData, infra, showInfra, bounds, center, z
         opacity: selected ? 1 : 0.6,
       };
     };
-  }, [meta, opacity, threshold, selectedId]);
+  }, [meta, opacity, threshold, selectedId, isGlow]);
 
-  // Restyle in place when opacity / threshold / selection change (cheaper than re-mounting).
   useEffect(() => {
     ref.current?.setStyle(style);
   }, [style]);
@@ -59,6 +76,7 @@ export default function MapView({ layerData, infra, showInfra, bounds, center, z
         attribution="&copy; OpenStreetMap contributors"
       />
       <FitBounds bounds={bounds} />
+      {isGlow && layerData && <NightLightsGlow data={layerData} opacity={opacity} />}
       {layerData && (
         <GeoJSON
           key={`${meta.layer}-${layerData.features.length}`}

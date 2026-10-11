@@ -51,7 +51,8 @@ def layers() -> list[dict]:
 def map_layer(layer_name: str, code: str = Depends(country_code), svc: DataService = Depends(service_dep)) -> dict:
     if layer_name not in map_service.LAYERS:
         raise HTTPException(404, f"Unknown layer '{layer_name}'. Available: {', '.join(map_service.LAYERS)}")
-    return map_service.build_layer(svc.cells(code), svc.spec(code).deg, layer_name, svc.meta(code)["is_demo"])
+    cells = svc.cells(code, include_nightlights=layer_name == "night_lights")
+    return map_service.build_layer(cells, svc.spec(code).deg, layer_name, svc.meta(code)["is_demo"])
 
 
 @router.get("/map/infrastructure", tags=["map"], summary="Grid lines and minigrids (GeoJSON)")
