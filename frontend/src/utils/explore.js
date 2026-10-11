@@ -85,13 +85,7 @@ export function summarizeNeighborhood(features, centerFeature, radiusKm, stats) 
 export function findById(features, query) {
   if (!query) return null;
   const q = query.trim().toUpperCase();
-  for (const f of features) {
-    const id = String(f.properties.cell_id || "").toUpperCase();
-    if (id === q) return f;
-  }
-  const withPrefix = q.startsWith("RW_") ? q : `RW_${q.padStart(4, "0")}`;
-  for (const f of features) {
-    if (String(f.properties.cell_id || "").toUpperCase() === withPrefix) return f;
-  }
-  return null;
+  return features.find(
+    (feature) => String(feature.properties.cell_id || "").toUpperCase() === q,
+  ) || null;
 }

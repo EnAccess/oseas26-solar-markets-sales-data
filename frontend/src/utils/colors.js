@@ -3,6 +3,7 @@ export const PALETTES = {
   market_gap: ["#fbf3dc", "#f4d98a", "#e8b04a", "#c97d1f", "#8a4a0c"],
   population: ["#f4f1f8", "#cfc3e3", "#a28ac6", "#7152a3", "#43276f"],
   grid: ["#eef2f6", "#c3cfdc", "#8ea1b8", "#56708f", "#2a3f5c"],
+  relative_wealth: ["#a50026", "#d73027", "#fdae61", "#ffffbf", "#a6d96a", "#1a9850", "#006837"],
 
  solar_resource: ["#edeff2", "#063881"],
 

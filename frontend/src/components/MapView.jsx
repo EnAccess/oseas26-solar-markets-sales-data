@@ -5,9 +5,8 @@ import {
   MapContainer,
   TileLayer,
   useMap,
-  useMapEvents,
 } from "react-leaflet";
-import { PALETTES, rampColor } from "../utils/colors";
+import { PALETTES, rampColor, logNormalizer } from "../utils/colors";
 import { fmtNum } from "../utils/format";
 import NightLightsGlow from "./NightLightsGlow";
 
@@ -26,17 +25,9 @@ function FitBounds({ bounds }) {
   return null;
 }
 
-function ClickPicker({ onPick }) {
-  useMapEvents({
-    click: (event) => onPick({ lat: event.latlng.lat, lon: event.latlng.lng }),
-  });
-  return null;
-}
-
 export default function MapView({
   layerData,
   infra,
-  liveGrid,
   showInfra,
   bounds,
   center,
@@ -45,7 +36,6 @@ export default function MapView({
   threshold,
   selectedId,
   onSelect,
-  onMapClick,
 }) {
   const ref = useRef(null);
   const onSelectRef = useRef(onSelect);
@@ -131,7 +121,6 @@ export default function MapView({
         attribution="&copy; OpenStreetMap contributors"
       />
       <FitBounds bounds={bounds} />
-      <ClickPicker onPick={onMapClick} />
       {isGlow && layerData && <NightLightsGlow data={layerData} opacity={opacity} />}
       {layerData && (
         <GeoJSON
@@ -164,30 +153,6 @@ export default function MapView({
             }}
           />
         ))}
-      {liveGrid && (
-        <GeoJSON
-          data={liveGrid}
-          style={(feature) => ({
-            color:
-              feature.properties.kind === "grid_line" ? "#b42318" : "#7c2d12",
-            weight: feature.properties.kind === "grid_line" ? 4 : 2,
-            fillColor: "#f97316",
-            fillOpacity: 0.9,
-          })}
-        />
-      )}
-      {liveGrid?.metadata && (
-        <CircleMarker
-          center={[liveGrid.metadata.lat, liveGrid.metadata.lon]}
-          radius={7}
-          pathOptions={{
-            color: "#111827",
-            fillColor: "#ffffff",
-            fillOpacity: 1,
-            weight: 3,
-          }}
-        />
-      )}
     </MapContainer>
   );
 }

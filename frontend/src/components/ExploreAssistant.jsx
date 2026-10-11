@@ -82,7 +82,7 @@ export default function ExploreAssistant({ layerData, stats, meta, selectedId, o
         <div className="explore-search">
           <input
             type="text"
-            placeholder="e.g. RW_0450 or 450"
+            placeholder="Paste a cell ID from the map"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}

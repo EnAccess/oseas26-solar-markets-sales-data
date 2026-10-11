@@ -9,7 +9,7 @@ import Sidebar from "../components/Sidebar";
 import StatCards from "../components/StatCards";
 import { useApi } from "../hooks/useApi";
 import { useDebounce } from "../hooks/useDebounce";
-import { api, errorMessage } from "../services/api";
+import { api } from "../services/api";
 
 export default function DashboardPage({
   country,
@@ -22,33 +22,11 @@ export default function DashboardPage({
   const [threshold, setThreshold] = useState(meta.underserved_threshold);
   const [showInfra, setShowInfra] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [gridPoint, setGridPoint] = useState(null);
-  const [gridRadius, setGridRadius] = useState(10);
-  const [gridCheck, setGridCheck] = useState({ status: "idle" });
   const debounced = useDebounce(threshold, 300);
 
   useEffect(() => {
     setSelected(null);
-    setGridPoint(null);
-    setGridCheck({ status: "idle" });
   }, [country]);
-
-  useEffect(() => {
-    if (!gridPoint) return undefined;
-    let active = true;
-    setGridCheck({ status: "loading" });
-    api
-      .gridCheck(gridPoint.lat, gridPoint.lon, gridRadius, country)
-      .then((data) => active && setGridCheck({ status: "done", data }))
-      .catch(
-        (error) =>
-          active &&
-          setGridCheck({ status: "error", error: errorMessage(error) }),
-      );
-    return () => {
-      active = false;
-    };
-  }, [gridPoint, gridRadius, country]);
 
   const layers = useApi(() => api.layers(), []);
   const layerData = useApi(() => api.layer(layer, country), [layer, country]);
@@ -86,7 +64,6 @@ export default function DashboardPage({
           <MapView
             layerData={layerData.status === "done" ? layerData.data : null}
             infra={infra.data}
-            liveGrid={gridCheck.status === "done" ? gridCheck.data : null}
             showInfra={showInfra}
             bounds={meta.bounds}
             center={countryInfo?.center ?? [-1.95, 29.87]}
@@ -95,7 +72,6 @@ export default function DashboardPage({
             threshold={debounced}
             selectedId={selected}
             onSelect={setSelected}
-            onMapClick={setGridPoint}
           />
           {layerData.status === "loading" && (
             <div className="map-overlay">
@@ -111,39 +87,6 @@ export default function DashboardPage({
             <Legend meta={layerData.data.metadata} />
           )}
           {meta.is_demo && <span className="map-demo">DEMO DATA</span>}
-          <div className="grid-live" aria-live="polite">
-            <strong>Live grid check</strong>
-            <span>
-              Click the map to query real OpenStreetMap infrastructure.
-            </span>
-            <label>
-              Radius
-              <select
-                value={gridRadius}
-                onChange={(e) => setGridRadius(+e.target.value)}
-              >
-                {[5, 10, 25, 50].map((km) => (
-                  <option key={km} value={km}>
-                    {km} km
-                  </option>
-                ))}
-              </select>
-            </label>
-            {gridCheck.status === "loading" && (
-              <span>Checking Overpass...</span>
-            )}
-            {gridCheck.status === "error" && (
-              <span className="grid-error">{gridCheck.error}</span>
-            )}
-            {gridCheck.status === "done" && (
-              <span>
-                {gridCheck.data.metadata.counts.lines +
-                  gridCheck.data.metadata.counts.minor}{" "}
-                lines, {gridCheck.data.metadata.counts.substations} substations,{" "}
-                {gridCheck.data.metadata.counts.plants} plants found.
-              </span>
-            )}
-          </div>
         </div>
 
         <CellPanel cellId={selected} threshold={debounced} />
