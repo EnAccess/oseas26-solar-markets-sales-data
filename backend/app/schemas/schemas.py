@@ -13,7 +13,7 @@ class CountryInfo(BaseModel):
     center: tuple[float, float]
     zoom: int
     bbox: tuple[float, float, float, float]
-    ready: bool = Field(description="True once predictions exist for this country")
+    ready: bool = Field(description="True once a dataset exists for this country")
 
 
 class AppMeta(BaseModel):
@@ -28,6 +28,7 @@ class AppMeta(BaseModel):
     features: list[str]
     underserved_threshold: float
     disclaimer: str
+    training_labels: str | None = None
 
 
 class LayerInfo(BaseModel):
@@ -42,27 +43,31 @@ class CellDetails(BaseModel):
     country: str
     latitude: float
     longitude: float
+    # Real (this migration)
     population: float
     population_density: float
-    nighttime_radiance: float
     relative_wealth: float
+    relative_wealth_observed: bool | None = None
+    # Teammates' inputs (currently fallback)
+    nighttime_radiance: float
     distance_to_grid_km: float
     distance_to_minigrid_km: float
     grid_presence: int
     solar_resource: float
+    # Model-derived (None until a model is trained on real data)
     observed_solar_penetration: float | None = None
-    predicted_solar_penetration: float
-    energy_need_score: float
-    market_gap_score: float
-    potentially_underserved: bool
+    predicted_solar_penetration: float | None = None
+    energy_need_score: float | None = None
+    market_gap_score: float | None = None
+    potentially_underserved: bool | None = None
     interpretation: str
     is_demo: bool
 
 
 class MetricSet(BaseModel):
-    mae: float
-    rmse: float
-    r2: float
+    mae: float | None = None
+    rmse: float | None = None
+    r2: float | None = None
     n_folds: int | None = None
     n_evaluated: int | None = None
     n_blocks: int | None = None
@@ -111,14 +116,14 @@ class Statistics(BaseModel):
     total_area_km2: float
     total_population: float
     n_cells: int
-    avg_predicted_penetration: float
-    population_weighted_penetration: float
-    potentially_underserved_cells: int
-    population_in_gap_areas: float
-    high_penetration_cells: int
-    low_penetration_cells: int
-    model_r2_random: float
-    model_r2_spatial: float
+    avg_predicted_penetration: float | None = None
+    population_weighted_penetration: float | None = None
+    potentially_underserved_cells: int | None = None
+    population_in_gap_areas: float | None = None
+    high_penetration_cells: int | None = None
+    low_penetration_cells: int | None = None
+    model_r2_random: float | None = None
+    model_r2_spatial: float | None = None
 
 
 class DataSource(BaseModel):

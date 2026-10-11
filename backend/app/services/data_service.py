@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import csv
 from functools import lru_cache
 
 import pandas as pd
@@ -24,49 +25,142 @@ class DataService:
         self._cache: dict[str, dict] = {}
         self._lock = threading.Lock()
 
+    def _cells_path(self, code: str):
+        """Canonical cell-features file written by pipeline/build.py."""
+        return self.settings.processed_path(code) / "cells_features.csv"
+
+    def _meta_path(self, code: str):
+        return self.settings.processed_path(code) / "meta.json"
+
     def is_ready(self, code: str) -> bool:
-        return (self.settings.outputs_path(code) / "cells.csv").exists() and \
-               (self.settings.models_path(code) / "metrics.json").exists()
+        """Ready if the canonical cells CSV + meta exist.
+
+        We intentionally do NOT require models/metrics.json here. The API can
+        serve real feature data (population, wealth, etc.) without a trained
+        model; the model-dependent layers will simply report as unavailable.
+        """
+        return self._cells_path(code).exists() and self._meta_path(code).exists()
 
     def ensure(self, code: str) -> None:
-        """Build dataset + train if artefacts are missing (first start)."""
+        """Build the dataset if it is missing.
+
+        This runs the data pipeline only, never model training. Training is a
+        separate, explicit step (python -m app.ml.train) that must be triggered
+        by whoever owns the model pipeline.
+        """
         if self.is_ready(code):
             return
         with self._lock:
             if self.is_ready(code):
                 return
-            from ..ml.train import build_and_train
+            from ..pipeline.build import build_dataset
+            from ..api.ml.train import build_and_train
 
-            logger.info("No artefacts for %s - running pipeline and training", code)
+            logger.info("No dataset for %s - running build pipeline", code)
             try:
-                build_and_train(self.settings, code)
+                build_dataset(self.settings, code)
             except Exception as exc:
                 raise DataNotReadyError(str(exc)) from exc
 
     def reload(self, code: str) -> None:
         self._cache.pop(code, None)
 
+    @staticmethod
+    def _optional_json(path):
+        return json.loads(path.read_text()) if path.exists() else None
+
     def _load(self, code: str) -> dict:
         code = code.upper()
         if code not in self._cache:
             self.ensure(code)
-            pdir, mdir, odir = (self.settings.processed_path(code), self.settings.models_path(code),
-                                self.settings.outputs_path(code))
+            pdir = self.settings.processed_path(code)
+            mdir = self.settings.models_path(code)
             meta = json.loads((pdir / "meta.json").read_text())
-            gogla = pd.read_csv(pdir / "gogla.csv") if (pdir / "gogla.csv").exists() else None
             self._cache[code] = {
-                "cells": pd.read_csv(odir / "cells.csv"),
+                "cells": pd.read_csv(self._cells_path(code)),
                 "meta": meta,
                 "spec": GridSpec(**meta["grid_spec"]),
-                "metrics": json.loads((mdir / "metrics.json").read_text()),
-                "importance": json.loads((mdir / "feature_importance.json").read_text()),
-                "infrastructure": json.loads((pdir / "infrastructure.geojson").read_text()),
-                "gogla": gogla,
+                # Optional artefacts: present only after an explicit training run.
+                "metrics": self._optional_json(mdir / "metrics.json"),
+                "importance": self._optional_json(mdir / "feature_importance.json"),
+                "infrastructure": self._optional_json(pdir / "infrastructure.geojson"),
+                "gogla": pd.read_csv(pdir / "gogla.csv") if (pdir / "gogla.csv").exists() else None,
             }
+    def _save_nightlight_values(self, code: str, cells: pd.DataFrame, meta: dict) -> None:
+        values = dict(zip(cells["cell_id"], cells["nighttime_radiance"]))
+        pdir, odir = self.settings.processed_path(code), self.settings.outputs_path(code)
+        for path in (pdir / "cells_features.csv", pdir / "training.csv", odir / "cells.csv"):
+            if not path.exists():
+                continue
+            raw = path.read_bytes()
+            line_ending = "\r\n" if b"\r\n" in raw else "\n"
+            with path.open("r", encoding="utf-8", newline="") as source:
+                reader = csv.DictReader(source)
+                if not reader.fieldnames or "nighttime_radiance" not in reader.fieldnames:
+                    continue
+                rows = list(reader)
+                fieldnames = reader.fieldnames
+            with path.open("w", encoding="utf-8", newline="") as target:
+                writer = csv.DictWriter(target, fieldnames=fieldnames, lineterminator=line_ending)
+                writer.writeheader()
+                for row in rows:
+                    if row.get("cell_id") in values:
+                        row["nighttime_radiance"] = str(values[row["cell_id"]])
+                    writer.writerow(row)
+        meta.setdefault("sources", {})["nighttime_radiance"] = (
+            "NASA Black Marble VNP46A2, sampled from LAADS"
+        )
+        meta["sources"]["all"] = (
+            "Synthetic demo features generated by pipeline/demo_generator.py; "
+            "nighttime_radiance is sourced from NASA LAADS."
+        )
+        (pdir / "meta.json").write_text(json.dumps(meta, indent=2))
+
+    def _load(self, code: str) -> dict:
+        code = code.upper()
+        if code in self._cache:
+            return self._cache[code]
+        self.ensure(code)
+        with self._lock:
+            if code not in self._cache:
+                pdir, mdir, odir = (self.settings.processed_path(code), self.settings.models_path(code),
+                                    self.settings.outputs_path(code))
+                meta = json.loads((pdir / "meta.json").read_text())
+                cells = pd.read_csv(odir / "cells.csv")
+                gogla = pd.read_csv(pdir / "gogla.csv") if (pdir / "gogla.csv").exists() else None
+                self._cache[code] = {
+                    "cells": cells,
+                    "meta": meta,
+                    "spec": GridSpec(**meta["grid_spec"]),
+                    "metrics": json.loads((mdir / "metrics.json").read_text()),
+                    "importance": json.loads((mdir / "feature_importance.json").read_text()),
+                    "infrastructure": json.loads((pdir / "infrastructure.geojson").read_text()),
+                    "gogla": gogla,
+                }
         return self._cache[code]
 
-    def cells(self, code: str) -> pd.DataFrame:
-        return self._load(code)["cells"]
+    def cells(self, code: str, include_nightlights: bool = False) -> pd.DataFrame:
+        code = code.upper()
+        data = self._load(code)
+        meta = data["meta"]
+        if include_nightlights and meta.get("is_demo") and \
+                "nighttime_radiance" not in meta.get("sources", {}):
+            with self._lock:
+                if "nighttime_radiance" not in meta.get("sources", {}):
+                    from nightlights.core.sampling import sample_radiance
+
+                    try:
+                        radiance = sample_radiance(
+                            list(zip(data["cells"]["lat"], data["cells"]["lon"]))
+                        )
+                    except Exception as exc:
+                        logger.exception("NASA nightlight sampling failed for %s", code)
+                        raise DataNotReadyError(
+                            f"NASA nightlight data unavailable for {code}: {exc}"
+                        ) from exc
+                    data["cells"]["nighttime_radiance"] = radiance
+                    self._save_nightlight_values(code, data["cells"], meta)
+        return data["cells"]
 
     def meta(self, code: str) -> dict:
         return self._load(code)["meta"]
@@ -74,13 +168,13 @@ class DataService:
     def spec(self, code: str) -> GridSpec:
         return self._load(code)["spec"]
 
-    def metrics(self, code: str) -> dict:
+    def metrics(self, code: str) -> dict | None:
         return self._load(code)["metrics"]
 
-    def importance(self, code: str) -> dict:
+    def importance(self, code: str) -> dict | None:
         return self._load(code)["importance"]
 
-    def infrastructure(self, code: str) -> dict:
+    def infrastructure(self, code: str) -> dict | None:
         return self._load(code)["infrastructure"]
 
     def gogla(self, code: str) -> pd.DataFrame | None:

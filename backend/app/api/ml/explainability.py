@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..config import FEATURE_LABELS
+from ...config import FEATURE_LABELS
 
 
 def feature_importance(model, features: list[str]) -> list[dict]:
