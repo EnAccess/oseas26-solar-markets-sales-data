@@ -36,6 +36,9 @@ export default function MapView({
   threshold,
   selectedId,
   onSelect,
+  adminLevel,
+  selectedAreas,
+  onToggleArea,
 }) {
   const ref = useRef(null);
   const onSelectRef = useRef(onSelect);
@@ -55,7 +58,9 @@ export default function MapView({
       const v = f.properties.value;
       const t = v == null ? null : norm(v);
       const faded = meta.layer === "market_gap" && v != null && v < threshold;
-      const selected = f.properties.cell_id === selectedId;
+      const selected = f.properties.admin_key
+        ? selectedAreas.has(f.properties.admin_key)
+        : f.properties.cell_id === selectedId;
 
       if (isGlow) {
         return {
@@ -75,7 +80,7 @@ export default function MapView({
         opacity: selected ? 1 : 0.6,
       };
     };
-  }, [meta, opacity, threshold, selectedId, isGlow]);
+  }, [meta, opacity, threshold, selectedId, isGlow, selectedAreas]);
 
   useEffect(() => {
     ref.current?.setStyle(style);
@@ -83,11 +88,22 @@ export default function MapView({
 
   const onEachFeature = (feature, layer) => {
     const v = feature.properties.value;
+    const areaProps = feature.properties;
+    const label = areaProps.admin_name
+      ? `${areaProps.admin_name} (${areaProps.admin_level})`
+      : areaProps.cell_id;
     layer.bindTooltip(
-      `${feature.properties.cell_id}: ${fmtNum(v, 2)}${meta && meta.unit !== "0-1" ? " " + meta.unit : ""}`,
-      { sticky: true },
+      `${label}: ${fmtNum(v, 2)}${meta && meta.unit !== "0-1" ? " " + meta.unit : ""}`,
+      { sticky: true, direction: "center", className: "admin-area-tooltip" },
     );
-    layer.on({ click: () => onSelectRef.current(feature.properties.cell_id) });
+    layer.on({ click: () => {
+      if (areaProps.admin_key) {
+        onToggleArea(areaProps.admin_key);
+        onSelectRef.current(areaProps.source_cell_ids?.[0] || null);
+      } else {
+        onSelectRef.current(areaProps.cell_id);
+      }
+    } });
   };
 
   const infraLines = useMemo(
@@ -124,7 +140,7 @@ export default function MapView({
       {isGlow && layerData && <NightLightsGlow data={layerData} opacity={opacity} />}
       {layerData && (
         <GeoJSON
-          key={`${meta.layer}-${layerData.features.length}`}
+          key={`${meta.layer}-${adminLevel}-${layerData.features.length}`}
           ref={ref}
           data={layerData}
           style={style}

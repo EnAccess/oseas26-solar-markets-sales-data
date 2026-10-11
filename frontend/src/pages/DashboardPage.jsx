@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import AsyncView, { ErrorBox, Loading } from "../components/AsyncView";
 import CellPanel from "../components/CellPanel";
 import ConceptBand from "../components/ConceptBand";
-import ExploreAssistant from "../components/ExploreAssistant";
+import AdminAreaReport from "../components/AdminAreaReport";
 import Legend from "../components/Legend";
 import MapView from "../components/MapView";
 import Sidebar from "../components/Sidebar";
@@ -10,6 +10,7 @@ import StatCards from "../components/StatCards";
 import { useApi } from "../hooks/useApi";
 import { useDebounce } from "../hooks/useDebounce";
 import { api } from "../services/api";
+import { ADMIN_LEVELS, buildAdminLayer } from "../utils/adminAreas";
 
 export default function DashboardPage({
   country,
@@ -18,6 +19,8 @@ export default function DashboardPage({
   countries,
 }) {
   const [layer, setLayer] = useState("solar_penetration");
+  const [adminLevel, setAdminLevel] = useState("cell");
+  const [selectedAreas, setSelectedAreas] = useState(() => new Set());
   const [opacity, setOpacity] = useState(0.8);
   const [threshold, setThreshold] = useState(meta.underserved_threshold);
   const [showInfra, setShowInfra] = useState(false);
@@ -26,16 +29,28 @@ export default function DashboardPage({
 
   useEffect(() => {
     setSelected(null);
-  }, [country]);
+    setSelectedAreas(new Set());
+  }, [country, adminLevel]);
 
   const layers = useApi(() => api.layers(), []);
-  const layerData = useApi(() => api.layer(layer, country), [layer, country]);
+  const layerData = useApi(
+    async () => buildAdminLayer(await api.layer(layer, country), adminLevel, country),
+    [layer, adminLevel, country],
+  );
   const infra = useApi(() => api.infrastructure(country), [country]);
   const stats = useApi(
     () => api.statistics(country, debounced),
     [country, debounced],
   );
   const countryInfo = countries.find((c) => c.code === country);
+  const toggleArea = (key) => {
+    setSelectedAreas((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   return (
     <>
@@ -56,6 +71,8 @@ export default function DashboardPage({
               onThreshold={setThreshold}
               showInfra={showInfra}
               onShowInfra={setShowInfra}
+              adminLevel={adminLevel}
+              onAdminLevel={setAdminLevel}
             />
           )}
         </AsyncView>
@@ -72,6 +89,9 @@ export default function DashboardPage({
             threshold={debounced}
             selectedId={selected}
             onSelect={setSelected}
+            adminLevel={adminLevel}
+            selectedAreas={selectedAreas}
+            onToggleArea={toggleArea}
           />
           {layerData.status === "loading" && (
             <div className="map-overlay">
@@ -89,7 +109,16 @@ export default function DashboardPage({
           {meta.is_demo && <span className="map-demo">DEMO DATA</span>}
         </div>
 
-        <CellPanel cellId={selected} threshold={debounced} />
+        <div className="side-stack">
+          <CellPanel cellId={selected} threshold={debounced} />
+          <AdminAreaReport
+            adminLevel={adminLevel}
+            availableLayers={layers.data || []}
+            layerData={layerData.status === "done" ? layerData.data : null}
+            selectedKeys={selectedAreas}
+            country={country}
+          />
+        </div>
       </div>
 
       <AsyncView state={stats} label="Calculating statistics...">
@@ -97,13 +126,6 @@ export default function DashboardPage({
       </AsyncView>
       <p className="muted disclaimer">{meta.disclaimer}</p>
 
-      <ExploreAssistant
-        layerData={layerData.status === "done" ? layerData.data : null}
-        stats={stats.status === "done" ? stats.data : null}
-        meta={layerData.status === "done" ? layerData.data.metadata : null}
-        selectedId={selected}
-        onJumpToCell={setSelected}
-      />
     </>
   );
 }

@@ -1,8 +1,10 @@
 import { fmtPct } from "../utils/format";
+import { ADMIN_LEVELS } from "../utils/adminAreas";
 
 export default function Sidebar({
   countries, country, onCountry, layers, layer, onLayer,
   opacity, onOpacity, threshold, onThreshold, showInfra, onShowInfra,
+  adminLevel, onAdminLevel,
 }) {
   return (
     <aside className="panel sidebar" aria-label="Filters">
@@ -13,6 +15,15 @@ export default function Sidebar({
         <select value={country} onChange={(e) => onCountry(e.target.value)}>
           {countries.map((c) => (
             <option key={c.code} value={c.code}>{c.name}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className="field">
+        <span>Administrative boundary</span>
+        <select value={adminLevel} onChange={(event) => onAdminLevel(event.target.value)}>
+          {ADMIN_LEVELS.map((level) => (
+            <option key={level.id} value={level.id}>{level.name}</option>
           ))}
         </select>
       </label>
