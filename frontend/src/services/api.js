@@ -12,13 +12,6 @@ export const api = {
   layers: () => get("/api/layers"),
   layer: (id, country) => get(`/api/map/layer/${id}`, { country }),
   infrastructure: (country) => get("/api/map/infrastructure", { country }),
-  gridCheck: (lat, lon, radiusKm, country) =>
-    get("/api/grid/check", {
-      lat,
-      lon,
-      radius_km: radiusKm,
-      country,
-    }),
   cell: (id, threshold) => get(`/api/cells/${id}`, { threshold }),
   performance: (country) => get("/api/model/performance", { country }),
   features: (country) => get("/api/model/features", { country }),

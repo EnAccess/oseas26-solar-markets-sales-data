@@ -19,6 +19,11 @@ LAYERS: dict[str, dict] = {
         description="Modelled population per square kilometre.",
         legend=("Low", "Medium", "High"),
     ),
+    "population_total": dict(
+        name="Total Population", column="population_total", unit="people", fixed=None,
+        description="Estimated people within each source grid cell.",
+        legend=("Few", "Medium", "Many"),
+    ),
     "night_lights": dict(
         name="Nighttime Lights", column="nighttime_radiance", unit="nW/cm2/sr", fixed=None,
         description="Satellite night-time radiance. Dark does not mean no solar: small systems are invisible to satellites.",

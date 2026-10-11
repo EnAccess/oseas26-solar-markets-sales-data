@@ -49,13 +49,15 @@ export default function CellPanel({ cellId, threshold }) {
           {(c) => (
             <>
               <p className="cell-id">
-                {c.cell_id}
+                {location?.cell || "Administrative cell unavailable"}
                 {c.is_demo && " (demo data)"}
               </p>
               {location && (
                 <p className="cell-location">
-                  {location.cell && `${location.cell} Cell, `}
-                  {location.district && `${location.district} District`}
+                  {location.village && `${location.village} Village, `}
+                  {location.sector && `${location.sector} Sector, `}
+                  {location.district && `${location.district} District, `}
+                  {location.province}
                 </p>
               )}
               <dl>
