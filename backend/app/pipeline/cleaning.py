@@ -26,36 +26,26 @@ def validate_columns(df: pd.DataFrame, required: list[str], name: str) -> None:
 
 
 def clean_cells(df: pd.DataFrame) -> pd.DataFrame:
-    """Fill gaps with the column median and clip physically impossible values."""
+    """Validate columns and clip physically impossible values.
+
+    Missing values are preserved: an unobserved value must never be replaced by a median,
+    zero or other surrogate that could later be read as an observation.
+    """
     validate_columns(df, CELL_COLUMNS, "cell features")
     out = df.copy()
-
-    # Preserve boolean flag columns untouched.
-    bool_cols = {"relative_wealth_observed"}
-    numeric = [c for c in CELL_COLUMNS if c not in {"cell_id"} and c not in bool_cols]
-
-    for col in numeric:
-        if col == "nighttime_radiance":
-            # Only the ingest pipeline can provide this real observation. Preserve
-            # missing values so no median/zero surrogate can masquerade as NASA data.
-            continue
-        n_missing = int(out[col].isna().sum())
-        if n_missing:
-            logger.warning("Filling %d missing values in '%s' with the median", n_missing, col)
-            out[col] = out[col].fillna(out[col].median() if out[col].notna().any() else 0.0)
-
     for col in ["population_density", "population_total",
                 "distance_to_grid_km", "distance_to_minigrid_km", "settlement_density"]:
         out[col] = out[col].clip(lower=0)
     out["solar_resource"] = out["solar_resource"].clip(lower=0.1)
     for col in ["grid_presence", "minigrid_presence"]:
-        out[col] = (out[col] > 0).astype(int)
-
-    # Ensure the flag column is proper bool, not object/float.
-    if "relative_wealth_observed" in out.columns:
-        out["relative_wealth_observed"] = out["relative_wealth_observed"].astype(bool)
-
+        out[col] = out[col].where(out[col].isna(), (out[col] > 0).astype(float))
+    out["relative_wealth_observed"] = out["relative_wealth_observed"].astype(bool)
+    for col in CELL_COLUMNS:
+        n_missing = int(out[col].isna().sum())
+        if n_missing:
+            logger.info("'%s': %d of %d cells have no value (kept missing)", col, n_missing, len(out))
     return out
+
 
 def clean_surveys(df: pd.DataFrame) -> pd.DataFrame:
     """Normalise survey records. Expected columns: latitude, longitude, solar_ownership.

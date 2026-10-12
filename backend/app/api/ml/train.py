@@ -1,4 +1,4 @@
-"""Train, validate, predict and write all artefacts.  Run:  python -m app.ml.train"""
+"""Train, validate, predict and write all artefacts.  Run:  python -m app.api.ml.train"""
 from __future__ import annotations
 
 import json
@@ -81,10 +81,11 @@ def run_training(settings: Settings, country_code: str) -> dict:
     if missing:
         raise ValueError(f"FEATURES contains unknown columns: {missing}")
 
-    if "nighttime_radiance" in features:
-        training = training.dropna(subset=["nighttime_radiance"])
-        if training.empty:
-            raise ValueError("No training rows have observed nighttime_radiance")
+    # Missing features are never imputed: rows without every feature are not used.
+    training = training.dropna(subset=features)
+    if len(training) < settings.min_training_cells:
+        raise ValueError(f"Only {len(training)} labelled cells have every feature; "
+                         f"need at least {settings.min_training_cells}.")
     X = training[features].to_numpy()
     y = training["solar_penetration"].clip(0, 1).to_numpy()
     lon, lat = training["lon"].to_numpy(), training["lat"].to_numpy()
@@ -105,15 +106,12 @@ def run_training(settings: Settings, country_code: str) -> dict:
     selected = min(results, key=lambda n: results[n]["spatial_cv"]["rmse"])
     logger.info("Selected model: %s", selected)
 
-    if "nighttime_radiance" in features:
-        has_radiance = cells["nighttime_radiance"].notna()
-        cells["predicted_solar_penetration"] = np.nan
-        cells.loc[has_radiance, "predicted_solar_penetration"] = predict_cells(
-            fitted[selected], cells.loc[has_radiance], features
-        )
-    else:
-        cells["predicted_solar_penetration"] = predict_cells(fitted[selected], cells, features)
-    cells = add_scores(cells, settings)
+    complete = cells[features].notna().all(axis=1)
+    cells["predicted_solar_penetration"] = np.nan
+    cells.loc[complete, "predicted_solar_penetration"] = predict_cells(
+        fitted[selected], cells.loc[complete], features
+    )
+    cells = add_scores(cells, settings, model_trusted=meta.get("training_labels") == "real")
     cells = cells.merge(
         training[["cell_id", "solar_penetration"]].rename(columns={"solar_penetration": "observed_solar_penetration"}),
         on="cell_id", how="left",
@@ -129,6 +127,7 @@ def run_training(settings: Settings, country_code: str) -> dict:
     metrics = {
         "country": code,
         "is_demo": meta["is_demo"],
+        "training_labels": meta.get("training_labels"),
         "selected_model": selected,
         "selection_criterion": "lowest spatial-CV RMSE",
         "features": features,

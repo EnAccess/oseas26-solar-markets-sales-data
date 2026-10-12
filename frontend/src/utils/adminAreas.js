@@ -6,6 +6,7 @@ export const ADMIN_LEVELS = [
   { id: "sector", name: "Sector" },
   { id: "cell", name: "Cell" },
   { id: "village", name: "Village" },
+  { id: "grid", name: "5 km analysis grid" },
 ];
 
 const GRID_LOOKUPS = new Map();
@@ -111,8 +112,27 @@ function quantile(values, fraction) {
   return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * fraction))];
 }
 
+function ringCentre(geometry) {
+  const ring = geometry?.type === "Polygon" ? geometry.coordinates[0] : geometry?.coordinates?.[0]?.[0];
+  if (!ring?.length) return null;
+  const pts = ring.slice(0, -1);
+  return [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
+}
+
+/** Grid feature whose square contains [lon, lat] (areas too small to contain a grid-cell centre). */
+function gridCellAt(gridLayer, centre) {
+  if (!centre) return null;
+  const [x, y] = centre;
+  return gridLayer.features.find((f) => {
+    const ring = f.geometry.coordinates[0];
+    const xs = ring.map((p) => p[0]);
+    const ys = ring.map((p) => p[1]);
+    return x >= Math.min(...xs) && x < Math.max(...xs) && y >= Math.min(...ys) && y < Math.max(...ys);
+  }) || null;
+}
+
 export async function buildAdminLayer(gridLayer, level, country = "RW") {
-  if (country !== "RW") return gridLayer;
+  if (country !== "RW" || level === "grid") return gridLayer;
 
   const data = await loadAdminData();
   const areas = sourceFeatures(data, level);
@@ -141,8 +161,19 @@ export async function buildAdminLayer(gridLayer, level, country = "RW") {
     const props = area.properties;
     const id = String(props.__admin_id ?? props.Prov_ID ?? "");
     const name = props.__admin_name ?? props.Province;
-    const entry = totals.get(id);
+    let entry = totals.get(id);
     const geometry = area.geometry;
+    let centreFallback = false;
+    if (!entry) {
+      // No 5 km cell centre falls inside this (small) area: use the cell under the area's centre.
+      const cell = gridCellAt(gridLayer, ringCentre(geometry));
+      const value = Number(cell?.properties.value);
+      if (cell) {
+        const valued = cell.properties.value != null && Number.isFinite(value);
+        entry = { sum: valued ? value : 0, count: valued ? 1 : 0, sourceCount: 1, sourceIds: [cell.properties.cell_id] };
+        centreFallback = true;
+      }
+    }
     return {
       type: "Feature",
       geometry,
@@ -152,10 +183,11 @@ export async function buildAdminLayer(gridLayer, level, country = "RW") {
         admin_name: name,
         admin_level: level,
         value: entry?.count
-          ? gridLayer.metadata.layer === "population_total" ? entry.sum : entry.sum / entry.count
+          ? gridLayer.metadata.layer === "population_total" ? (centreFallback ? null : entry.sum) : entry.sum / entry.count
           : null,
         source_cell_count: entry?.sourceCount || 0,
         source_cell_ids: entry?.sourceIds || [],
+        centre_fallback: centreFallback,
         area_km2: geometryArea(geometry),
       },
     };
@@ -171,6 +203,7 @@ export async function buildAdminLayer(gridLayer, level, country = "RW") {
       min: quantile(values, 0.02) ?? gridLayer.metadata.min,
       max: quantile(values, 0.98) ?? gridLayer.metadata.max,
       admin_level: level,
+      n_missing: features.filter((feature) => feature.properties.value == null).length,
       boundary_source: "rwanda-location-lookup administrative GeoJSON",
       assigned_grid_cells: assignedGridCells,
       matched_admin_areas: matchedFeatures,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -29,6 +31,11 @@ class AppMeta(BaseModel):
     underserved_threshold: float
     disclaimer: str
     training_labels: str | None = None
+    built_at: str | None = None
+    sources: dict[str, dict[str, Any]] = {}
+    assumptions: dict[str, Any] = {}
+    model_status: dict[str, Any] = {}
+    method: dict[str, str] = {}
 
 
 class LayerInfo(BaseModel):
@@ -36,30 +43,66 @@ class LayerInfo(BaseModel):
     name: str
     description: str
     unit: str
+    selector: bool = True
+    kind: str | None = None
+    source: str | None = None
+
+
+class Indicator(BaseModel):
+    key: str
+    label: str
+    value: float | None = None
+    display_value: float | None = None
+    formatted: str
+    unit: str
+    kind: str
+    kind_label: str
+    source: str
+    source_year: str | None = None
+    status: str
+    description: str
+
+
+class Driver(BaseModel):
+    factor: str
+    value: float | None = None
+    note: str
 
 
 class CellDetails(BaseModel):
     cell_id: str
+    place_name: str | None = None
+    admin_cell: str | None = None
+    admin_sector: str | None = None
     country: str
     latitude: float
     longitude: float
-    # Real (this migration)
-    population: float
-    population_density: float
-    relative_wealth: float
+    district: str | None = None
+    province: str | None = None
+    population: float | None = None
+    population_density: float | None = None
+    relative_wealth: float | None = None
     relative_wealth_observed: bool | None = None
-    # Teammates' inputs (currently fallback)
-    nighttime_radiance: float
-    distance_to_grid_km: float
-    distance_to_minigrid_km: float
-    grid_presence: int
-    solar_resource: float
-    # Model-derived (None until a model is trained on real data)
-    observed_solar_penetration: float | None = None
+    nighttime_radiance: float | None = None
+    distance_to_grid_km: float | None = None
+    grid_presence: int | None = None
+    survey_solar_share: float | None = None
+    survey_solar_hh_sampled: float | None = None
+    # Model-derived: None unless the model was trained on real labels for this dataset.
     predicted_solar_penetration: float | None = None
+    observed_solar_penetration: float | None = None
     energy_need_score: float | None = None
-    market_gap_score: float | None = None
+    solar_uptake: float | None = None
+    uptake_source: str | None = None
+    uptake_source_label: str | None = None
+    market_gap_score: float | None = Field(None, description="0-1 relative opportunity score")
+    opportunity_score: int | None = Field(None, description="market_gap_score as an integer 0-100")
+    evidence_level: str | None = None
+    missing_inputs: list[str] = []
     potentially_underserved: bool | None = None
+    drivers: list[Driver] = []
+    indicators: list[Indicator] = []
+    model_status: dict[str, Any] = {}
     interpretation: str
     is_demo: bool
 
@@ -92,6 +135,7 @@ class ModelPerformance(BaseModel):
     spatial_cv: MetricSet
     models: dict[str, ModelResult]
     note: str
+    usable: bool = False
 
 
 class FeatureImportanceItem(BaseModel):
@@ -116,6 +160,7 @@ class Statistics(BaseModel):
     total_area_km2: float
     total_population: float
     n_cells: int
+    n_scored_cells: int | None = None
     avg_predicted_penetration: float | None = None
     population_weighted_penetration: float | None = None
     potentially_underserved_cells: int | None = None
@@ -130,11 +175,15 @@ class DataSource(BaseModel):
     id: str
     name: str
     description: str
-    year: str
     resolution: str
     role: str
     limitations: str
-    demo_substitute: str
+    status: str = Field(description="real | missing | synthetic")
+    date: str | None = None
+    licence: str | None = None
+    file: str | None = None
+    retrieved_at: str | None = None
+    note: str | None = None
 
 
 class GoglaRow(BaseModel):

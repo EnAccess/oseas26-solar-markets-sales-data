@@ -1,166 +1,127 @@
-"""Map-ready layer definitions and GeoJSON builders."""
-from __future__ import annotations
+"""Map-ready layer definitions and GeoJSON builders.
 
-from pathlib import Path
+Every layer is built from the same cached cell table as the cell API and reports, so a value on
+the map is the value in the panel and the report. Cells without a value are kept (value = null)
+so coverage gaps stay visible instead of disappearing.
+"""
+from __future__ import annotations
 
 import pandas as pd
 
 from ..pipeline.export import cells_to_geojson
+from .indicators import INDICATORS, KIND_LABELS, display_value, source_date, source_name
 
 
 class LayerUnavailableError(RuntimeError):
     """Raised when a layer's source column is not present in the dataset."""
-    pass
 
 
+# `selector=False` layers stay available through the API (e.g. for EAE) but are not offered in the UI.
 LAYERS: dict[str, dict] = {
-    "population": dict(
-        name="Population Density", column="population_density", unit="people/km2", fixed=None,
-        description="Modelled population per square kilometre.",
-        legend=("Low", "Medium", "High"),
+    "market_gap": dict(
+        name="Potential Market Gap", column="market_gap_score", selector=True,
+        legend=("Lower priority", "Medium", "Higher priority"),
+        direction="Higher = more people, farther from the mapped grid, darker, and less evidence of existing solar.",
     ),
-    "population_total": dict(
-        name="Total Population", column="population_total", unit="people", fixed=None,
-        description="Estimated people within each source grid cell.",
-        legend=("Few", "Medium", "Many"),
+    "population": dict(
+        name="Population Density", column="population_density", selector=True, log=True,
+        legend=("Sparse", "Medium", "Dense"), direction="Higher = more people per km².",
     ),
     "night_lights": dict(
-        name="Nighttime Lights", column="nighttime_radiance", unit="nW/cm2/sr", fixed=None,
-        description="Satellite night-time radiance. Dark does not mean no solar: small systems are invisible to satellites.",
+        name="Nighttime Lights", column="nighttime_radiance", selector=True, log=True,
         legend=("Dark", "Medium", "Bright"),
+        direction="Higher = brighter. Dark does not mean no solar: small systems are invisible to satellites.",
     ),
     "grid": dict(
-        name="Distance to Grid", column="distance_to_grid_km", unit="km", fixed=None,
-        description="Distance from the cell centre to the nearest mapped grid line.",
-        legend=("Near grid", "Medium", "Far from grid"),
+        name="Distance to Mapped Grid", column="distance_to_grid_km", selector=True,
+        legend=("Near grid", "Medium", "Far from grid"), direction="Higher = farther from a mapped power line.",
     ),
-    "solar_resource": dict(
-        name="Solar Households (survey)", column="solar_households", unit="households", fixed=None,
-        description="MTF survey households with a solar device. District totals mapped onto each 5 km grid cell.",
-        legend=("Few", "Medium", "Many"),
+    "survey_solar": dict(
+        name="Solar Ownership (district survey)", column="survey_solar_share", selector=True,
+        legend=("Lower", "Medium", "Higher"),
+        direction="Higher = larger estimated share of households owning a solar device (district-wide value).",
     ),
     "relative_wealth": dict(
-        name="Relative Wealth", column="relative_wealth", unit="RWI", fixed=None,
-        description="Meta Relative Wealth Index. Positive = wealthier than national median.",
-        legend=("Poorer", "Median", "Wealthier"),
+        name="Relative Wealth", column="relative_wealth", selector=True,
+        legend=("Poorer", "National mean", "Wealthier"), direction="Higher = wealthier than the national mean.",
+    ),
+    "population_total": dict(
+        name="Total Population", column="population_total", selector=False,
+        legend=("Few", "Medium", "Many"), direction="Higher = more people in the cell.",
     ),
     "solar_penetration": dict(
-        name="Predicted Solar Penetration", column="predicted_solar_penetration", unit="0-1", fixed=(0.0, 1.0),
-        description="Model estimate of the share of households using off-grid solar (0 = very low, 1 = very high).",
-        legend=("Very low", "Medium", "Very high"),
-    ),
-    "market_gap": dict(
-        name="Potential Market Gap", column="market_gap_score", unit="0-1", fixed=None,
-        description="Energy need x (1 - predicted penetration). A screening indicator, not proof of commercial viability.",
-        legend=("Low opportunity", "Medium", "Potentially underserved"),
+        name="Predicted Solar Penetration", column="predicted_solar_penetration", selector=False,
+        legend=("Very low", "Medium", "Very high"), direction="Higher = larger predicted share of households.",
     ),
 }
 
 
-_BASE = Path(__file__).resolve().parents[2] / "data" / "processed" / "RW"
-_CELLS_SURVEY = _BASE / "cells_with_survey.csv"
-
-# Layers whose data does not come from the `cells` dataframe passed to build_layer().
-_EXTERNAL_LAYERS = {"solar_resource"}
-
-
 def available_layers(cells: pd.DataFrame) -> dict[str, dict]:
-    """Return only layers whose source column is present in cells, plus external ones."""
-    return {
-        k: v for k, v in LAYERS.items()
-        if k in _EXTERNAL_LAYERS or (
-            v["column"] in cells.columns
-            and cells[v["column"]].notna().any()
-        )
-    }
+    """Layers whose source column exists and has at least one value."""
+    return {k: v for k, v in LAYERS.items()
+            if v["column"] in cells.columns and cells[v["column"]].notna().any()}
 
 
-def layer_catalog(cells: pd.DataFrame | None = None) -> list[dict]:
-    """Catalog for the UI.
-
-    If `cells` is given, only layers whose source column is present (plus external
-    layers) are listed. If `cells` is None, all known layers are listed.
-    """
-    src = available_layers(cells) if cells is not None else LAYERS
-    return [
-        {"id": k, "name": v["name"], "description": v["description"], "unit": v["unit"]}
-        for k, v in src.items()
-    ]
-
-
-def build_layer(cells: pd.DataFrame, deg: float, layer_id: str, is_demo: bool) -> dict:
-    if layer_id == "solar_resource":
-        return _build_solar_households_cells_layer(deg, is_demo)
-
-    spec = LAYERS[layer_id]
-    col = spec["column"]
-    if col not in cells.columns:
-        raise LayerUnavailableError(
-            f"Layer '{layer_id}' requires column '{col}', which is not present in the "
-            f"current dataset. Retrain the model to enable this layer."
-        )
-
-    if spec["fixed"] is not None:
-        lo, hi = spec["fixed"]
-    else:
-        lo = float(cells[col].quantile(0.02))
-        hi = float(cells[col].quantile(0.98))
-        if hi <= lo:
-            hi = lo + 1e-6
-
-    return _finish_layer(cells, deg, spec, layer_id, col, lo, hi, is_demo)
+def layer_catalog(cells: pd.DataFrame, sources: dict) -> list[dict]:
+    out = []
+    for layer_id, layer in available_layers(cells).items():
+        spec = INDICATORS[layer["column"]]
+        out.append({
+            "id": layer_id, "name": layer["name"], "description": spec["description"], "unit": spec["unit"],
+            "selector": layer["selector"], "kind": KIND_LABELS[spec["kind"]],
+            "source": source_name(spec["source"], sources),
+        })
+    return out
 
 
-def _build_solar_households_cells_layer(deg: float, is_demo: bool) -> dict:
-    df = pd.read_csv(_CELLS_SURVEY).dropna(subset=["solar_households"]).reset_index(drop=True)
+def cached_layer(svc, code: str, layer_id: str) -> dict:
+    """GeoJSON for a layer, built once per dataset version (the cache resets when source files change)."""
+    cache = svc.layer_cache(code)
+    if layer_id not in cache:
+        cache[layer_id] = build_layer(svc.cells(code), svc.spec(code).deg, layer_id,
+                                      svc.meta(code).get("sources", {}))
+    return cache[layer_id]
 
-    spec = LAYERS["solar_resource"]
-    lo = float(df["solar_households"].quantile(0.02))
-    hi = float(df["solar_households"].quantile(0.98))
+
+def warm(svc, code: str) -> None:
+    """Pre-build every available layer so the first map request is fast."""
+    for layer_id in available_layers(svc.cells(code)):
+        cached_layer(svc, code, layer_id)
+
+
+def build_layer(cells: pd.DataFrame, deg: float, layer_id: str, sources: dict) -> dict:
+    layer = LAYERS[layer_id]
+    column = layer["column"]
+    if column not in cells.columns:
+        raise LayerUnavailableError(f"Layer '{layer_id}' requires column '{column}', which is not in the dataset.")
+    spec = INDICATORS[column]
+
+    frame = cells[["cell_id", "lon", "lat"]].copy()
+    frame["name"] = cells["place_name"] if "place_name" in cells else cells["cell_id"]
+    frame["value"] = [display_value(column, v) for v in cells[column]]
+    values = frame["value"].dropna()
+    lo, hi = (float(values.quantile(0.02)), float(values.quantile(0.98))) if len(values) else (0.0, 1.0)
     if hi <= lo:
         hi = lo + 1e-6
 
-    return _finish_layer(df, deg, spec, "solar_resource", "solar_households", lo, hi, is_demo)
-
-
-def _finish_layer(
-    df: pd.DataFrame,
-    deg: float,
-    spec: dict,
-    layer_id: str,
-    value_col: str,
-    lo: float,
-    hi: float,
-    is_demo: bool,
-) -> dict:
-    """Shared GeoJSON + metadata builder for both internal and external layers."""
-    if len(df) != len(df["cell_id"]):
-        # Defensive: cell_id should be present and unique-length with the frame.
-        raise LayerUnavailableError(
-            f"Layer '{layer_id}' is missing a usable 'cell_id' column."
-        )
-
-    fc = cells_to_geojson(df, deg, {"value": value_col})
-
-    features = fc.get("features", [])
-    if len(features) != len(df):
-        # cells_to_geojson dropped or reordered rows; don't silently misalign cell_ids.
-        raise LayerUnavailableError(
-            f"Layer '{layer_id}': GeoJSON feature count ({len(features)}) does not match "
-            f"row count ({len(df)}); cannot attach cell_id safely."
-        )
-
-    for f, cid in zip(features, df["cell_id"]):
-        f["properties"]["cell_id"] = cid
-
+    fc = cells_to_geojson(frame, deg, {"cell_id": "cell_id", "name": "name", "value": "value"})
+    source = sources.get(spec["source"], {})
     fc["metadata"] = {
         "layer": layer_id,
-        "name": spec["name"],
+        "name": layer["name"],
         "unit": spec["unit"],
         "description": spec["description"],
+        "direction": layer["direction"],
+        "kind": KIND_LABELS[spec["kind"]],
+        "source": source_name(spec["source"], sources),
+        "source_date": source_date(source),
+        "licence": source.get("licence"),
+        "scale": "log" if layer.get("log") else "linear",
         "min": round(lo, 4),
         "max": round(hi, 4),
-        "legend": {"low": spec["legend"][0], "mid": spec["legend"][1], "high": spec["legend"][2]},
-        "is_demo": is_demo,
+        "range_note": "Colour range: 2nd to 98th percentile of cells in Rwanda.",
+        "legend": dict(zip(("low", "mid", "high"), layer["legend"])),
+        "n_cells": len(frame),
+        "n_missing": int(frame["value"].isna().sum()),
     }
     return fc

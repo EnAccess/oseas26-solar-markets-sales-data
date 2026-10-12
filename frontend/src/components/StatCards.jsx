@@ -1,4 +1,4 @@
-import { fmtCompact, fmtInt, fmtNum, fmtPct } from "../utils/format";
+import { fmtCompact, fmtInt } from "../utils/format";
 
 function Card({ label, value, sub }) {
   return (
@@ -12,17 +12,14 @@ function Card({ label, value, sub }) {
 
 export default function StatCards({ s }) {
   return (
-    <section className="stats" aria-label="Statistics">
-      <Card label="Average solar penetration" value={fmtPct(s.avg_predicted_penetration)}
-            sub={`${fmtPct(s.population_weighted_penetration)} population-weighted`} />
-      <Card label="Potentially underserved areas" value={fmtInt(s.potentially_underserved_cells)}
-            sub={`cells of ${fmtInt(s.n_cells)} (gap ≥ ${fmtPct(s.threshold)})`} />
-      <Card label="Population in potential gap areas" value={fmtCompact(s.population_in_gap_areas)}
-            sub={`of ${fmtCompact(s.total_population)} total`} />
-      <Card label="Model R² (spatial CV)" value={fmtNum(s.model_r2_spatial, 2)}
-            sub={`random CV: ${fmtNum(s.model_r2_random, 2)}`} />
-      <Card label="High / low penetration cells" value={`${fmtInt(s.high_penetration_cells)} / ${fmtInt(s.low_penetration_cells)}`}
-            sub={`${fmtInt(s.total_area_km2)} km² covered`} />
+    <section className="stats" aria-label="Country summary">
+      <Card label="Cells at or above the cut-off" value={fmtInt(s.potentially_underserved_cells)}
+            sub={`of ${fmtInt(s.n_scored_cells)} scored cells (cut-off ${Math.round(s.threshold * 100)}/100)`} />
+      <Card label="People in those cells" value={fmtCompact(s.population_in_gap_areas)}
+            sub={`of ${fmtCompact(s.total_population)} (WorldPop 2020)`} />
+      <Card label="Cells without a score" value={fmtInt(s.n_cells - s.n_scored_cells)}
+            sub="missing population or solar uptake evidence" />
+      <Card label="Area covered" value={`${fmtInt(s.total_area_km2)} km²`} sub={`${fmtInt(s.n_cells)} cells of 5 km`} />
     </section>
   );
 }

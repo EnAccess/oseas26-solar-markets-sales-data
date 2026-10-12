@@ -91,9 +91,12 @@ def test_data_service_cells_makes_zero_http_calls(tmp_path):
         processed_path=lambda _code: processed,
         models_path=lambda _code: tmp_path / "models/RW",
         outputs_path=lambda _code: tmp_path / "outputs/RW",
+        need_w_population=0.4, need_w_grid_distance=0.4, need_w_darkness=0.2,
     )
     service = DataService(settings)
     with patch("requests.get") as mock_get:
         cells = service.cells("RW", include_nightlights=True)
-    assert "nighttime_radiance" not in cells.columns
+    # The API reads only processed files: no NASA call, and missing radiance stays missing.
+    assert cells["nighttime_radiance"].isna().all()
+    assert cells["market_gap_score"].isna().all()
     mock_get.assert_not_called()

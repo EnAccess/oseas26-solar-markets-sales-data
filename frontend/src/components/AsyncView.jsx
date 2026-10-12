@@ -11,7 +11,7 @@ export function Loading({ label = "Loading..." }) {
 export function ErrorBox({ message }) {
   return (
     <div className="state state-error" role="alert">
-      <strong>Something went wrong.</strong> {message}
+      {message}
     </div>
   );
 }

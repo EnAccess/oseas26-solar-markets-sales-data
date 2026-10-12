@@ -1,29 +1,42 @@
 # Methodology
 
-**Target.** `solar_penetration` in [0, 1]: household-weighted share of households owning a solar
-product in a grid cell, aggregated from survey clusters (`solar_ownership`).
+Implemented in `backend/app/services/market_gap.py`. Every consumer (map, cell API, reports, assistant,
+training pipeline) calls this module.
 
-**Features** (configurable with `FEATURES`): population density, nighttime radiance, relative wealth,
-solar resource, distance to grid, distance to minigrid, grid presence, minigrid presence and
-settlement density (mean density over a ~3x3 neighbourhood). Nighttime radiance is only one predictor:
-low light is never interpreted as "no solar".
+## Potential Market Gap (market opportunity score)
 
-**Models.** Random Forest and XGBoost regressors. The one with the lowest spatial-CV RMSE is used to
-predict every cell; predictions are clamped to [0, 1].
+```
+energy_need_score = 0.4 * scale(log(1 + population density))
+                  + 0.4 * scale(distance to mapped grid, km)
+                  + 0.2 * (1 - scale(log(1 + nighttime radiance)))
+solar_uptake      = model prediction (only if trained on real survey labels)
+                    else district MTF survey estimate
+                    else unknown
+market_gap_score  = energy_need_score * (1 - solar_uptake)        # 0-1, displayed as an integer 0-100
+```
 
-**Validation.**
-* *Random CV*: shuffled K-fold. Optimistic when neighbouring cells are similar.
-* *Spatial blocked CV*: cells are grouped into `SPATIAL_BLOCK_KM` blocks, whole blocks are held out
-  (GroupKFold) and training cells within `SPATIAL_BUFFER_KM` of any test cell are removed.
-Reported metrics are pooled out-of-fold MAE, RMSE and R². Nothing is hard-coded.
+`scale` clips to the 2nd-98th percentile of Rwandan cells and rescales to 0-1. Weights are configurable
+(`NEED_W_*`). Darkness carries the smallest weight because it overlaps with grid distance (Spearman
+ρ = −0.27 in the current build). It is treated only as a proxy for grid electricity.
 
-**Feature importance.** Normalised importance from the fitted model. It describes the model, not causes.
+**District survey estimate.** The MTF solar-device file lists only solar-owning households. For each
+district: sum of nationally representative household weights over distinct ordinary households with a
+device ÷ (WorldPop district population ÷ `AVG_HOUSEHOLD_SIZE` 4.3). Refugee-camp households use a
+separate weight and are excluded. Values outside 0-1 are discarded rather than clipped.
 
-**Potential Market Gap Indicator.**
-`energy_need_score` = weighted mean of (scaled log population density, scaled distance to grid,
-1 - scaled log radiance), weights `NEED_W_*`; scaling uses the 2nd-98th percentile of the country.
-`market_gap_score = energy_need_score * (1 - predicted_solar_penetration)`.
-This is a screening heuristic for areas that merit investigation, not an investment model.
+**Missing data.** Missing inputs are never imputed. A cell with a missing need input or no uptake
+evidence has no score (`evidence_level = insufficient`, `missing_inputs` lists the gaps). Districts with
+fewer than 10 sampled solar households are marked `limited`.
 
-**GOGLA.** Used only as a national control total: model-estimated households with solar
-(`sum(pred * population / household size)`) is compared with reported sales.
+**Interpretation.** A deterministic, relative screening heuristic for prioritising field investigation.
+It is not calibrated, not a percentage of households, and not evidence of commercial viability. A true
+"estimated market gap %" would need household-level grid-connection status and georeferenced ownership,
+which the repository does not contain.
+
+## Penetration model (preserved, currently unused)
+
+Random Forest and XGBoost regressors on cell features; random K-fold and spatial blocked CV with a
+buffer; the model with the lowest spatial RMSE is selected (`backend/app/api/ml/`). Labels must be
+georeferenced survey clusters (`data/raw/RW/surveys.csv`: latitude, longitude, solar_ownership). The
+stored models were trained on synthetic demo labels, so the API reports them as not usable and ignores
+their predictions.
