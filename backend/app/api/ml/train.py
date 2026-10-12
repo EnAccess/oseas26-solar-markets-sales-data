@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone
 
 import joblib
+import numpy as np
 import pandas as pd
 from sklearn.base import clone
 from sklearn.ensemble import RandomForestRegressor
@@ -42,11 +43,48 @@ def run_training(settings: Settings, country_code: str) -> dict:
     training = pd.read_csv(pdir / "training.csv")
     cells = pd.read_csv(pdir / "cells_features.csv")
 
+    if "nighttime_radiance" in settings.feature_list:
+        radiance_path = pdir / "cells_with_nightlights.csv"
+        if not radiance_path.exists():
+            raise FileNotFoundError(
+                f"nighttime_radiance requires processed NASA CSV cache: {radiance_path}"
+            )
+        radiance = pd.read_csv(radiance_path)
+        if not {"cell_id", "nighttime_radiance"}.issubset(radiance.columns):
+            raise ValueError(f"{radiance_path} must contain cell_id and nighttime_radiance")
+        values = pd.to_numeric(radiance["nighttime_radiance"], errors="coerce")
+        finite = values[np.isfinite(values)]
+        non_missing = values.dropna()
+        distinct = int(finite.nunique())
+        stats = {
+            "rows": len(values),
+            "min": float(finite.min()) if len(finite) else None,
+            "max": float(finite.max()) if len(finite) else None,
+            "mean": float(finite.mean()) if len(finite) else None,
+            "distinct": distinct,
+        }
+        print(f"Nighttime radiance source={radiance_path} {json.dumps(stats)}")
+        assert (len(finite) > 0 and len(finite) == len(non_missing)
+                and not (finite == 0).all() and distinct > 1
+                and not (non_missing < 0).any() and not (non_missing > 1e6).any()), (
+            f"Invalid nighttime_radiance values in {radiance_path}: {stats}"
+        )
+        cells = cells.drop(columns=["nighttime_radiance"], errors="ignore").merge(
+            radiance[["cell_id", "nighttime_radiance"]], on="cell_id", how="left", validate="one_to_one"
+        )
+        training = training.drop(columns=["nighttime_radiance"], errors="ignore").merge(
+            radiance[["cell_id", "nighttime_radiance"]], on="cell_id", how="left", validate="many_to_one"
+        )
+
     features = settings.feature_list
     missing = [f for f in features if f not in training.columns]
     if missing:
         raise ValueError(f"FEATURES contains unknown columns: {missing}")
 
+    if "nighttime_radiance" in features:
+        training = training.dropna(subset=["nighttime_radiance"])
+        if training.empty:
+            raise ValueError("No training rows have observed nighttime_radiance")
     X = training[features].to_numpy()
     y = training["solar_penetration"].clip(0, 1).to_numpy()
     lon, lat = training["lon"].to_numpy(), training["lat"].to_numpy()
@@ -67,7 +105,14 @@ def run_training(settings: Settings, country_code: str) -> dict:
     selected = min(results, key=lambda n: results[n]["spatial_cv"]["rmse"])
     logger.info("Selected model: %s", selected)
 
-    cells["predicted_solar_penetration"] = predict_cells(fitted[selected], cells, features)
+    if "nighttime_radiance" in features:
+        has_radiance = cells["nighttime_radiance"].notna()
+        cells["predicted_solar_penetration"] = np.nan
+        cells.loc[has_radiance, "predicted_solar_penetration"] = predict_cells(
+            fitted[selected], cells.loc[has_radiance], features
+        )
+    else:
+        cells["predicted_solar_penetration"] = predict_cells(fitted[selected], cells, features)
     cells = add_scores(cells, settings)
     cells = cells.merge(
         training[["cell_id", "solar_penetration"]].rename(columns={"solar_penetration": "observed_solar_penetration"}),

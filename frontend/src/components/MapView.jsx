@@ -8,7 +8,6 @@ import {
 } from "react-leaflet";
 import { PALETTES, rampColor, logNormalizer } from "../utils/colors";
 import { fmtNum } from "../utils/format";
-import NightLightsGlow from "./NightLightsGlow";
 
 function FitBounds({ bounds, selectionBounds, selectionZoom }) {
   const map = useMap();
@@ -70,11 +69,13 @@ export default function MapView({
 
       if (isGlow) {
         return {
-          fillColor: selected ? "#ffd166" : "transparent",
-          fillOpacity: selected ? 0.72 : 0.01,
-          weight: selected ? 3 : 0,
-          color: selected ? "#102a36" : "transparent",
-          opacity: selected ? 1 : 0,
+          // Render the measured cell values directly. A dark, opaque fill with
+          // clear cell borders stays legible over the basemap at every zoom.
+          fillColor: selected ? "#ffd166" : rampColor(stops, t),
+          fillOpacity: selected ? 0.95 : Math.max(0.72, opacity),
+          weight: selected ? 2 : 0.65,
+          color: selected ? "#102a36" : "#fff7e8",
+          opacity: selected ? 1 : 0.72,
         };
       }
 
@@ -143,7 +144,6 @@ export default function MapView({
         attribution="&copy; OpenStreetMap contributors"
       />
       <FitBounds bounds={bounds} selectionBounds={selectionBounds} selectionZoom={selectionZoom} />
-      {isGlow && layerData && <NightLightsGlow data={layerData} opacity={opacity} />}
       {layerData && (
         <GeoJSON
           key={`${meta.layer}-${adminLevel}-${layerData.features.length}`}

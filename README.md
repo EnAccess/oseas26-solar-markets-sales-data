@@ -91,6 +91,25 @@ energy-need and market-gap scores. OpenStreetMap coverage can be incomplete;
 the values represent mapped infrastructure, not a guarantee of a physical
 connection.
 
+### Weekly NASA night-lights ingest
+
+From `backend/`, run `powershell -ExecutionPolicy Bypass -File scripts/schedule/weekly_nightlights.ps1`. Set `NASA_EARTHDATA_TOKEN` in `backend/.env`. The ingest writes dated real VNP46A2 CSV/parquet snapshots under `backend/data/raw/`; processing writes `backend/data/processed/RW/cells_with_nightlights.csv` as the API cache and a matching parquet file. The API reads the processed CSV cache and does not call NASA.
+
+#### How to verify night lights are real
+
+Open the latest `backend/data/raw/nightlights_RW_YYYY-MM-DD.meta.json` and copy two or three values from `granules`. Search each exact granule filename in the [NASA LAADS search UI](https://ladsweb.modaps.eosdis.nasa.gov/search/). Confirm the product is VNP46A2 and the tile and acquisition day match the metadata. The metadata records the source URLs, per-day/tile status, and `find_latest` listing log. The matching raw CSV is a cache of the sampled values; rows marked `no_data` stay NaN.
+
+#### Feature lineage
+
+| Layer / feature | Source file | Source column | Origin |
+| --- | --- | --- | --- |
+| `night_lights` | `backend/data/processed/RW/cells_with_nightlights.csv` | `nighttime_radiance` | NASA LAADS VNP46A2 `.h5` granules named in matching raw snapshot metadata; parquet is kept alongside as an equivalent cache. |
+| `solar_penetration` | `backend/outputs/RW/cells.csv` | `predicted_solar_penetration` | Selected trained model; labels originate from `backend/data/processed/RW/training.csv:solar_penetration`. |
+| `market_gap` | `backend/outputs/RW/cells.csv` | `market_gap_score` | Computed from `energy_need_score` and predicted penetration in `backend/app/api/ml/predict.py`; darkness uses nighttime radiance. |
+| `solar_resource` (map layer ID) | `backend/data/processed/RW/cells_with_survey.csv` | `solar_households` | District survey counts attached by `backend/app/pipeline/attach_survey_to_cells.py`. The UI ID is misleading: this is not GHI. The actual model feature `solar_resource` is GHI from `backend/data/raw/RW/solar_resource.tif` when present; real-mode ingestion otherwise uses its documented demo fallback. |
+
+The survey layer is traceable to its checked-in CSV input `backend/data/processed/RW/Household_Solar_Device_Use_and_Ownership.csv`; generated outputs can be rebuilt with `python -m app.pipeline.attach_survey_to_cells` from `backend/`. A GHI observation is only traceable when `solar_resource.tif` exists; the current repository does not include it, so that map layer's GHI lineage is flagged as unverified.
+
 ## Required knowledge
 
 ### Stack

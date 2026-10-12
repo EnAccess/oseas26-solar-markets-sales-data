@@ -63,6 +63,8 @@ def map_layer(layer_name: str, code: str = Depends(country_code),
         raise HTTPException(404, f"Unknown layer '{layer_name}'. Available: {', '.join(map_service.LAYERS)}")
     try:
         cells = svc.cells(code, include_nightlights=layer_name == "night_lights")
+        if layer_name not in map_service.available_layers(cells):
+            raise HTTPException(404, f"Layer '{layer_name}' is not available for {code}")
         return map_service.build_layer(
             cells, svc.spec(code).deg, layer_name, svc.meta(code)["is_demo"]
         )

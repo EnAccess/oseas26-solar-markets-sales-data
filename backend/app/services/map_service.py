@@ -60,6 +60,7 @@ LAYERS: dict[str, dict] = {
 _BASE = Path(__file__).resolve().parents[2] / "data" / "processed" / "RW"
 _CELLS_SURVEY = _BASE / "cells_with_survey.csv"
 
+# Layers whose data does not come from the `cells` dataframe passed to build_layer().
 _EXTERNAL_LAYERS = {"solar_resource"}
 
 
@@ -67,11 +68,19 @@ def available_layers(cells: pd.DataFrame) -> dict[str, dict]:
     """Return only layers whose source column is present in cells, plus external ones."""
     return {
         k: v for k, v in LAYERS.items()
-        if k in _EXTERNAL_LAYERS or v["column"] in cells.columns
+        if k in _EXTERNAL_LAYERS or (
+            v["column"] in cells.columns
+            and cells[v["column"]].notna().any()
+        )
     }
 
 
 def layer_catalog(cells: pd.DataFrame | None = None) -> list[dict]:
+    """Catalog for the UI.
+
+    If `cells` is given, only layers whose source column is present (plus external
+    layers) are listed. If `cells` is None, all known layers are listed.
+    """
     src = available_layers(cells) if cells is not None else LAYERS
     return [
         {"id": k, "name": v["name"], "description": v["description"], "unit": v["unit"]}
@@ -90,28 +99,16 @@ def build_layer(cells: pd.DataFrame, deg: float, layer_id: str, is_demo: bool) -
             f"Layer '{layer_id}' requires column '{col}', which is not present in the "
             f"current dataset. Retrain the model to enable this layer."
         )
-    if spec["fixed"]:
+
+    if spec["fixed"] is not None:
         lo, hi = spec["fixed"]
     else:
-        lo, hi = float(cells[col].quantile(0.02)), float(cells[col].quantile(0.98))
+        lo = float(cells[col].quantile(0.02))
+        hi = float(cells[col].quantile(0.98))
         if hi <= lo:
             hi = lo + 1e-6
 
-    fc = cells_to_geojson(cells, deg, {"value": col})
-    for f, cid in zip(fc["features"], cells["cell_id"]):
-        f["properties"]["cell_id"] = cid
-
-    fc["metadata"] = {
-        "layer": layer_id,
-        "name": spec["name"],
-        "unit": spec["unit"],
-        "description": spec["description"],
-        "min": round(lo, 4),
-        "max": round(hi, 4),
-        "legend": {"low": spec["legend"][0], "mid": spec["legend"][1], "high": spec["legend"][2]},
-        "is_demo": is_demo,
-    }
-    return fc
+    return _finish_layer(cells, deg, spec, layer_id, col, lo, hi, is_demo)
 
 
 def _build_solar_households_cells_layer(deg: float, is_demo: bool) -> dict:
@@ -123,18 +120,47 @@ def _build_solar_households_cells_layer(deg: float, is_demo: bool) -> dict:
     if hi <= lo:
         hi = lo + 1e-6
 
-    fc = cells_to_geojson(df, deg, {"value": "solar_households"})
-    for f, cid in zip(fc["features"], df["cell_id"]):
+    return _finish_layer(df, deg, spec, "solar_resource", "solar_households", lo, hi, is_demo)
+
+
+def _finish_layer(
+    df: pd.DataFrame,
+    deg: float,
+    spec: dict,
+    layer_id: str,
+    value_col: str,
+    lo: float,
+    hi: float,
+    is_demo: bool,
+) -> dict:
+    """Shared GeoJSON + metadata builder for both internal and external layers."""
+    if len(df) != len(df["cell_id"]):
+        # Defensive: cell_id should be present and unique-length with the frame.
+        raise LayerUnavailableError(
+            f"Layer '{layer_id}' is missing a usable 'cell_id' column."
+        )
+
+    fc = cells_to_geojson(df, deg, {"value": value_col})
+
+    features = fc.get("features", [])
+    if len(features) != len(df):
+        # cells_to_geojson dropped or reordered rows; don't silently misalign cell_ids.
+        raise LayerUnavailableError(
+            f"Layer '{layer_id}': GeoJSON feature count ({len(features)}) does not match "
+            f"row count ({len(df)}); cannot attach cell_id safely."
+        )
+
+    for f, cid in zip(features, df["cell_id"]):
         f["properties"]["cell_id"] = cid
 
     fc["metadata"] = {
-        "layer": "solar_resource",
+        "layer": layer_id,
         "name": spec["name"],
         "unit": spec["unit"],
         "description": spec["description"],
         "min": round(lo, 4),
         "max": round(hi, 4),
-        "legend": {"low": "Few", "mid": "Medium", "high": "Many"},
+        "legend": {"low": spec["legend"][0], "mid": spec["legend"][1], "high": spec["legend"][2]},
         "is_demo": is_demo,
     }
     return fc
