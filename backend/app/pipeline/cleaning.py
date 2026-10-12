@@ -35,12 +35,16 @@ def clean_cells(df: pd.DataFrame) -> pd.DataFrame:
     numeric = [c for c in CELL_COLUMNS if c not in {"cell_id"} and c not in bool_cols]
 
     for col in numeric:
+        if col == "nighttime_radiance":
+            # Only the ingest pipeline can provide this real observation. Preserve
+            # missing values so no median/zero surrogate can masquerade as NASA data.
+            continue
         n_missing = int(out[col].isna().sum())
         if n_missing:
             logger.warning("Filling %d missing values in '%s' with the median", n_missing, col)
             out[col] = out[col].fillna(out[col].median() if out[col].notna().any() else 0.0)
 
-    for col in ["population_density", "population_total", "nighttime_radiance",
+    for col in ["population_density", "population_total",
                 "distance_to_grid_km", "distance_to_minigrid_km", "settlement_density"]:
         out[col] = out[col].clip(lower=0)
     out["solar_resource"] = out["solar_resource"].clip(lower=0.1)

@@ -12,7 +12,6 @@ from fastapi.responses import JSONResponse
 from .api import cells, grid, layers, models, statistics
 from .config import get_settings
 from .services.data_service import DataNotReadyError, get_data_service
-from nightlights.api.main import app as nasa_nightlights_app
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("solar_market_reality")
@@ -48,5 +47,3 @@ async def not_ready_handler(_: Request, exc: DataNotReadyError) -> JSONResponse:
 
 for module in (layers, cells, grid, models, statistics):
     app.include_router(module.router, prefix="/api")
-
-app.mount("/", nasa_nightlights_app)

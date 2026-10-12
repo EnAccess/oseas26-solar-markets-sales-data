@@ -143,14 +143,14 @@ def _load_real(settings: Settings, country: Country, grid: gpd.GeoDataFrame, spe
     # Keep NaN here: "no RWI observation in this cell" is genuinely unknown.
     sources["relative_wealth"] = "real:data/raw/RW/relative_wealth.csv"
 
-    # ---- secondary layers: real if present, else fallback ------------------------
+    # ---- secondary layers: real if present; never invent radiance -----------------
     nl_path = raw_dir / "night_lights.tif"
     if nl_path.exists():
         night = values_at_cells(raster_to_grid(nl_path, spec, Resampling.average), grid)
         sources["night_lights"] = "real:data/raw/RW/night_lights.tif"
     else:
-        night = np.asarray(fallback.nighttime_radiance, dtype=float)
-        sources["night_lights"] = "synthetic_fallback:demo_generator"
+        night = np.full(len(grid), np.nan, dtype=float)
+        sources["night_lights"] = "missing:run scripts/ingest/fetch_nightlights.py and scripts/process/build_cells_nightlights.py"
 
     sr_path = raw_dir / "solar_resource.tif"
     if sr_path.exists():
