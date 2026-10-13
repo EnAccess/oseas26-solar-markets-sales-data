@@ -20,3 +20,6 @@ h5py
 fsspec
 requests
 aiohttp
+matplotlib>=3.8
+reportlab>=4.0
+anthropic>=1.0

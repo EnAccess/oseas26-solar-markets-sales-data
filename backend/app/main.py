@@ -9,8 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
-from .api import cells, grid, layers, models, statistics
+from .api import assistant, cells, grid, layers, models, reports, statistics
 from .config import get_settings
+from .services import map_service
 from .services.data_service import DataNotReadyError, get_data_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -21,8 +22,10 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     try:
-        get_data_service().ensure(settings.default_country)
-        logger.info("Artefacts ready (DEMO_MODE=%s)", settings.demo_mode)
+        svc = get_data_service()
+        svc.ensure(settings.default_country)
+        map_service.warm(svc, settings.default_country)
+        logger.info("Data loaded and map layers cached (DEMO_MODE=%s)", settings.demo_mode)
     except DataNotReadyError:
         logger.exception("Could not prepare data at startup. /api/health still works; fix the error and restart.")
     yield
@@ -45,5 +48,5 @@ async def not_ready_handler(_: Request, exc: DataNotReadyError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": f"Data is not ready: {exc}"})
 
 
-for module in (layers, cells, grid, models, statistics):
+for module in (layers, cells, grid, models, statistics, reports, assistant):
     app.include_router(module.router, prefix="/api")

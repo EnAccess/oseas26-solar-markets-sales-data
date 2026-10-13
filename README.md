@@ -75,40 +75,167 @@ Three core deliverables (plus an optional prototype):
 - **Interactive prototype (optional):** a map in which priority zones are visible,
   inspectable, and traceable back to the layers that produced them.
 
-### Refreshing the live grid-distance layer
+## Implementation: Solar Market Reality
 
-The Rwanda `distance_to_grid_km` and `grid_presence` columns can be refreshed
-from mapped electricity infrastructure in OpenStreetMap through the Overpass
-API. From the repository root, run:
+Solar Market Reality is this repository's implementation of the market-reality layer for Rwanda. It is a
+FastAPI backend plus a React + Leaflet frontend, with real, locally cached data and no synthetic values in the
+default build. The sections below describe what is actually implemented and tested.
 
-```powershell
-python backend/scripts/update_grid_from_overpass.py
+### What it does
+
+- **Explorer map** of 5 km analysis cells (1,203 cells covering Rwanda). Layers: Potential Market Gap
+  (default), Population Density, Nighttime Lights, Distance to Mapped Grid, Solar Ownership (district
+  survey) and Relative Wealth. Each layer has a legend with units, source, date and a count of cells with
+  no data.
+- **Mapped electricity infrastructure overlay**: OpenStreetMap power lines, minor lines and cables,
+  substations and power plants, styled by class. There is no verified minigrid dataset, so no minigrids
+  are drawn.
+- **Location details**: every indicator for a cell, with its unit, source, date and evidence type
+  (observed, external estimate, derived, model prediction), plus the opportunity score, what drives it,
+  and an interpretation.
+- **Manual selection and reports**: select cells with "Add to selection", Ctrl/Cmd + click, the "click
+  adds to selection" mode, or by searching a district/province and adding all its cells. Review the
+  selection, then generate a report preview or download a **PDF** (tables, charts, interpretation, sources,
+  limitations) or **CSV**, covering only the selected cells.
+- **AI assistant** ("Ask the data" tab): answers questions about locations, indicators, comparisons and
+  reports. It calls read-only backend tools over the same services. It is optional and needs
+  `ANTHROPIC_API_KEY`.
+- **About, Data sources, Model and Limitations pages**, generated from the live dataset metadata.
+
+### Data in the current build
+
+| Indicator | Source (file) | Date / version | Unit | Status |
+| --- | --- | --- | --- | --- |
+| Population, density | WorldPop 2020 1 km unconstrained, `data/raw/RW/population.tif` | 2020 | people, people/km² | real (CC BY 4.0) |
+| Nighttime radiance | NASA VNP46A2 via LAADS, `data/processed/RW/cells_with_nightlights.csv` | single-day sample, ingest Oct 2026 | nW/cm²/sr | real; raw snapshot metadata not in this checkout |
+| Distance to grid, grid presence, overlay | OpenStreetMap via Overpass, `data/raw/RW/grid.geojson`, `power_facilities.geojson` | OSM snapshot 2026-10-12 | km, yes/no | real (ODbL) |
+| Solar ownership | MTF household survey, solar device module, `data/processed/RW/Household_Solar_Device_Use_and_Ownership.csv` | year not recorded in file | % of households (district estimate) | real, district level |
+| Relative wealth | Meta RWI via HDX, `data/raw/RW/relative_wealth.csv` | 2021 | RWI | real (CC BY-NC 4.0) |
+| Districts / provinces | GADM level 2, `data/processed/RW/rwanda_districts.geojson` | – | – | real |
+| Solar resource (GHI), minigrids, GOGLA, GPS survey clusters | – | – | – | **not available**: left missing, never substituted |
+
+`data/raw/` is gitignored. The processed CSV (`data/processed/RW/cells_features.csv`) and its
+provenance (`data/processed/RW/meta.json`: source, licence, retrieval and build dates, file paths) are
+committed, so the app runs from a fresh clone without downloading anything.
+
+### Potential Market Gap: method
+
+The calculation lives in one place, `backend/app/services/market_gap.py`, and is used by the map, cell API,
+reports, assistant and training pipeline.
+
+```
+energy_need_score = weighted mean (0.4 / 0.4 / 0.2) of
+    scaled log(1 + population density)       more people      -> higher
+    scaled distance to mapped grid           farther          -> higher
+    1 - scaled log(1 + nighttime radiance)   darker           -> higher   (grid proxy only)
+    scaling: 2nd-98th percentile of Rwandan cells, missing values stay missing
+solar_uptake      = predicted penetration from a model trained on REAL survey labels, if available;
+                    otherwise the district MTF survey estimate
+                    (survey-weighted solar-owning households / (WorldPop district population / 4.3));
+                    otherwise unknown
+market_gap_score  = energy_need_score x (1 - solar_uptake)      displayed as an integer 0-100
 ```
 
-The script updates both `backend/data/processed/RW/cells_features.csv` and the
-served `backend/outputs/RW/cells.csv`, and recalculates only the grid-dependent
-energy-need and market-gap scores. OpenStreetMap coverage can be incomplete;
-the values represent mapped infrastructure, not a guarantee of a physical
-connection.
+- **What it is:** a deterministic heuristic that gives a relative priority score for field investigation.
+  It is **not** a calibrated model, **not** a percentage of households lacking solar, and **not** evidence
+  of commercial viability. The data cannot support a true "market gap %": the survey has no GPS and lists
+  only solar owners, and grid-connection status per household is unknown.
+- **Missing data:** with no uptake evidence (e.g. a cell whose centre is outside every district) or a
+  missing need input, the cell gets **no score** and `evidence_level = insufficient`. It is never scored
+  as if solar ownership were zero.
+- **Evidence levels:** `indicative` (district survey with ≥ 10 sampled solar households, or a real-label
+  model), `limited` (fewer than 10 sampled households), `insufficient` (no score).
+- **Darkness ≠ no solar:** radiance only enters the need score as a grid proxy, with the smallest weight
+  because it overlaps with grid distance (Spearman ρ = −0.27 in the current build).
+- **Default priority cut-off:** 0.55, roughly the top fifth of scored cells in the current build;
+  adjustable on the map.
+- **Predicted solar penetration:** the stored Random Forest / XGBoost models (`backend/models/RW`) were
+  trained on synthetic demo labels. The API detects this (`metrics.is_demo` ≠ dataset) and does **not**
+  use or display their predictions. The training pipeline is preserved: add georeferenced survey
+  clusters as `data/raw/RW/surveys.csv` and run `python -m app.api.ml.train` to enable them.
 
-### Weekly NASA night-lights ingest
+### How the assistant retrieves evidence
 
-From `backend/`, run `powershell -ExecutionPolicy Bypass -File scripts/schedule/weekly_nightlights.ps1`. Set `NASA_EARTHDATA_TOKEN` in `backend/.env`. The ingest writes dated real VNP46A2 CSV/parquet snapshots under `backend/data/raw/`; processing writes `backend/data/processed/RW/cells_with_nightlights.csv` as the API cache and a matching parquet file. The API reads the processed CSV cache and does not call NASA.
+`POST /api/assistant/ask` runs a bounded tool-use loop (at most 6 rounds) with Claude
+(`ASSISTANT_MODEL`, default `claude-opus-5-5`) over six read-only tools: `resolve_location`,
+`get_cell_evidence`, `summarize_cells`, `compare_areas`, `get_methodology` and `prepare_report`. Each tool
+calls the same services as the API, so assistant answers use the map's numbers. A deterministic scope
+guard declines unrelated questions before any model call. Tool inputs are validated and size-limited,
+and no code, SQL, shell or file access is reachable. Each response returns the evidence it used, which
+the UI shows under "Data used". Without `ANTHROPIC_API_KEY` the endpoint returns only the retrieved
+evidence and a setup message, never a simulated answer. Only aggregated project data is sent to the
+provider. Server-side refusal fallbacks (`fallbacks: "default"`) are enabled.
 
-#### How to verify night lights are real
+### Install and run
 
-Open the latest `backend/data/raw/nightlights_RW_YYYY-MM-DD.meta.json` and copy two or three values from `granules`. Search each exact granule filename in the [NASA LAADS search UI](https://ladsweb.modaps.eosdis.nasa.gov/search/). Confirm the product is VNP46A2 and the tile and acquisition day match the metadata. The metadata records the source URLs, per-day/tile status, and `find_latest` listing log. The matching raw CSV is a cache of the sampled values; rows marked `no_data` stay NaN.
+Requires Python 3.11+ and Node 18+.
 
-#### Feature lineage
+```bash
+# backend
+cd backend
+python -m venv .venv && .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
+pip install -r requirements-dev.txt                       # runtime deps + pytest
+cp .env.example .env                                      # DEMO_MODE=false is the default
+uvicorn app.main:app --reload                             # http://localhost:8000/docs
 
-| Layer / feature | Source file | Source column | Origin |
-| --- | --- | --- | --- |
-| `night_lights` | `backend/data/processed/RW/cells_with_nightlights.csv` | `nighttime_radiance` | NASA LAADS VNP46A2 `.h5` granules named in matching raw snapshot metadata; parquet is kept alongside as an equivalent cache. |
-| `solar_penetration` | `backend/outputs/RW/cells.csv` | `predicted_solar_penetration` | Selected trained model; labels originate from `backend/data/processed/RW/training.csv:solar_penetration`. |
-| `market_gap` | `backend/outputs/RW/cells.csv` | `market_gap_score` | Computed from `energy_need_score` and predicted penetration in `backend/app/api/ml/predict.py`; darkness uses nighttime radiance. |
-| `solar_resource` (map layer ID) | `backend/data/processed/RW/cells_with_survey.csv` | `solar_households` | District survey counts attached by `backend/app/pipeline/attach_survey_to_cells.py`. The UI ID is misleading: this is not GHI. The actual model feature `solar_resource` is GHI from `backend/data/raw/RW/solar_resource.tif` when present; real-mode ingestion otherwise uses its documented demo fallback. |
+# frontend (second terminal)
+cd frontend
+npm install
+npm run dev                                               # http://localhost:5173
+```
 
-The survey layer is traceable to its checked-in CSV input `backend/data/processed/RW/Household_Solar_Device_Use_and_Ownership.csv`; generated outputs can be rebuilt with `python -m app.pipeline.attach_survey_to_cells` from `backend/`. A GHI observation is only traceable when `solar_resource.tif` exists; the current repository does not include it, so that map layer's GHI lineage is flagged as unverified.
+Environment variables (`backend/.env`): `DEMO_MODE` (false = real data), `UNDERSERVED_THRESHOLD` (0.55),
+`NEED_W_*` (need weights), `AVG_HOUSEHOLD_SIZE` (4.3, used for the district solar share),
+`NASA_EARTHDATA_TOKEN` (night-light ingest only), `ANTHROPIC_API_KEY`, `ASSISTANT_MODEL`,
+`ASSISTANT_TIMEOUT_S`. Keys stay on the backend. Frontend: `VITE_API_URL` / `VITE_PROXY_TARGET`.
+
+### Refresh and rebuild data
+
+From `backend/`:
+
+| Step | Command | Writes |
+| --- | --- | --- |
+| Population and wealth | `python scripts/ingest/fetch_population_wealth.py` | `data/raw/RW/population.tif`, `relative_wealth.csv` + `.meta.json` |
+| Electricity infrastructure | `python scripts/update_grid_from_overpass.py` (rebuilds automatically; `--no-build` to skip) | `data/raw/RW/grid.geojson`, `power_facilities.geojson`, `infrastructure.meta.json` |
+| Night lights (needs `NASA_EARTHDATA_TOKEN`) | `powershell -ExecutionPolicy Bypass -File scripts/schedule/weekly_nightlights.ps1` | dated raw snapshots + `data/processed/RW/cells_with_nightlights.csv` |
+| Processed dataset | `python -m app.pipeline.build` | `data/processed/RW/cells_features.csv`, `infrastructure.geojson`, `meta.json` |
+
+The API loads the processed CSV once, caches the map layers in memory (warmed at startup) and reloads
+automatically when a processed file changes on disk. It never calls NASA, WorldPop, HDX or Overpass while
+serving requests. To verify the night-light values, open the latest
+`data/raw/nightlights_RW_YYYY-MM-DD.meta.json` and search the listed granule names in the
+[NASA LAADS search UI](https://ladsweb.modaps.eosdis.nasa.gov/search/).
+
+### API
+
+Interactive docs: `http://localhost:8000/docs`. Main endpoints: `GET /api/meta`, `GET /api/layers`,
+`GET /api/map/layer/{market_gap|population|night_lights|grid|survey_solar|relative_wealth|population_total|solar_penetration}`,
+`GET /api/map/infrastructure`, `GET /api/cells/{cell_id}`, `GET /api/statistics`,
+`GET /api/locations/search?q=`, `POST /api/reports/{summary|csv|pdf}` (`{"cell_ids": [...], "threshold": 0.55}`,
+max 500 cells), `GET /api/assistant/status`, `POST /api/assistant/ask`, `GET /api/data-sources`,
+`GET /api/limitations`, `GET /api/model/performance`. The map layer previously called `solar_resource`
+(which actually showed survey counts) is now `survey_solar`.
+
+### Tests
+
+```bash
+cd backend && python -m pytest -q        # market-gap unit tests, pipeline/schema, API consistency, reports, assistant (mocked)
+cd frontend && npm test && npm run build # Vitest + Testing Library component tests, production build
+```
+
+### Known limitations
+
+- Solar uptake evidence is district-wide, from 2-47 sampled solar households per district, and survey
+  year is unknown. Cells in one district share one uptake value.
+- The district share mixes MTF survey weights with WorldPop 2020 population and an assumed household
+  size of 4.3.
+- No georeferenced survey labels are available, so there is no validated cell-level penetration model.
+- Night lights are a single-day VNP46A2 sample (clouds, moonlight and fires can affect it), and its
+  acquisition date can't be verified from this checkout.
+- OpenStreetMap infrastructure is incomplete, and mapped lines do not mean connected households.
+- 204 cells near the border have centres outside the district polygons. They have no survey evidence
+  and no score. Border and lake cells have under-counted or missing population.
+- GOGLA sales, solar resource (GHI) and minigrid datasets are not in the repository.
 
 ## Required knowledge
 

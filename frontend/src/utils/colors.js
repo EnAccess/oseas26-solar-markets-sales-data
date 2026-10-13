@@ -1,31 +1,20 @@
+// Sequential palettes per layer (light -> dark). Cells without data use NO_DATA.
 export const PALETTES = {
-  solar_penetration: ["#f1f6f5", "#b9dcd6", "#6fb8ae", "#2f8c84", "#0b5550"],
-  market_gap: ["#fbf3dc", "#f4d98a", "#e8b04a", "#c97d1f", "#8a4a0c"],
-  population: ["#f4f1f8", "#cfc3e3", "#a28ac6", "#7152a3", "#43276f"],
-  population_total: ["#f4f1f8", "#cfc3e3", "#a28ac6", "#7152a3", "#43276f"],
-  grid: ["#eef2f6", "#c3cfdc", "#8ea1b8", "#56708f", "#2a3f5c"],
-  relative_wealth: ["#a50026", "#d73027", "#fdae61", "#ffffbf", "#a6d96a", "#1a9850", "#006837"],
-
- solar_resource: ["#edeff2", "#02337d"],
-
-
-  night_lights: [
-    "#0b0724",
-    "#2c115f",
-    "#721f81",
-    "#b63679",
-    "#e65164",
-    "#fb8b38",
-    "#fecb2f",
-    "#f5f5c0",
-  ],
-
+  market_gap: ["#f7fee7", "#d9f99d", "#a3e635", "#4d7c0f", "#064e3b"],
+  population: ["#f5f3ff", "#ddd6fe", "#a78bfa", "#6d28d9", "#3b0764"],
+  population_total: ["#f5f3ff", "#ddd6fe", "#a78bfa", "#6d28d9", "#3b0764"],
+  grid: ["#f0f9ff", "#bae6fd", "#38bdf8", "#0369a1", "#0c2d48"],
+  survey_solar: ["#fefce8", "#fde68a", "#f59e0b", "#b45309", "#713f12"],
+  solar_penetration: ["#ecfdf5", "#a7f3d0", "#34d399", "#047857", "#064e3b"],
+  relative_wealth: ["#9f1239", "#f43f5e", "#fef3c7", "#34d399", "#065f46"],
+  night_lights: ["#0b0724", "#2c115f", "#721f81", "#b63679", "#e65164", "#fb8b38", "#fecb2f", "#f5f5c0"],
 };
+export const NO_DATA = "#d1d5db";
 
 const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 
 export function rampColor(stops, t) {
-  if (t == null || Number.isNaN(t)) return "#c9d1da";
+  if (t == null || Number.isNaN(t)) return NO_DATA;
   const x = Math.min(1, Math.max(0, t)) * (stops.length - 1);
   const i = Math.min(stops.length - 2, Math.floor(x));
   const f = x - i;
@@ -36,12 +25,14 @@ export function rampColor(stops, t) {
 
 export const gradientCss = (stops) => `linear-gradient(to right, ${stops.join(",")})`;
 
-export function logNormalizer(min, max, floor = 0.02) {
-  const lo = Math.log(Math.max(min, floor));
-  const hi = Math.log(Math.max(max, floor * 1.1));
-  const span = hi - lo || 1;
-  return (v) => {
-    if (v == null || Number.isNaN(v)) return null;
-    return (Math.log(Math.max(v, floor)) - lo) / span;
-  };
+/** Map a value to 0-1 using the layer's metadata (linear or log scale). Null stays null. */
+export function normalizer(meta) {
+  if (meta.scale === "log") {
+    const floor = Math.max(meta.min, 1e-3);
+    const lo = Math.log(floor);
+    const span = Math.log(Math.max(meta.max, floor * 1.1)) - lo || 1;
+    return (v) => (v == null || Number.isNaN(v) ? null : (Math.log(Math.max(v, floor)) - lo) / span);
+  }
+  const span = meta.max - meta.min || 1;
+  return (v) => (v == null || Number.isNaN(v) ? null : (v - meta.min) / span);
 }

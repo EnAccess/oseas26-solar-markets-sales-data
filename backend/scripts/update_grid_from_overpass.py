@@ -1,102 +1,132 @@
-"""Refresh grid distance features from live OpenStreetMap/Overpass data.
+"""Refresh mapped electricity infrastructure for Rwanda from OpenStreetMap (Overpass API).
 
-This intentionally updates only the grid-related columns and the scores that
-depend on grid distance. Other model inputs and outputs are left unchanged.
+Writes raw inputs, then rebuilds the processed dataset so distance-to-grid, grid presence
+and the market-opportunity scores are recalculated by the shared pipeline:
+
+  data/raw/RW/grid.geojson               power=line / minor_line / cable (LineStrings)
+  data/raw/RW/power_facilities.geojson   power=substation / plant (points; polygons -> centroid)
+  data/raw/RW/infrastructure.meta.json   query, OSM snapshot timestamp, retrieval time, counts
+
+Run from backend/:  python scripts/update_grid_from_overpass.py [--from-file overpass.json] [--no-build]
+
+OpenStreetMap coverage is incomplete. A mapped line is not proof of a household connection.
 """
 from __future__ import annotations
 
+import argparse
 import json
+import sys
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
-import geopandas as gpd
-import numpy as np
-import pandas as pd
-from shapely.geometry import LineString, Point, box
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-ROOT = Path(__file__).resolve().parents[2]
-PROCESSED = ROOT / "backend" / "data" / "processed" / "RW"
-OUTPUTS = ROOT / "backend" / "outputs" / "RW"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-RWANDA_BBOX = (28.80, -2.90, 30.95, -1.00)
-UTM_EPSG = 32735
+RWANDA_BBOX = (28.80, -2.90, 30.95, -1.00)  # min_lon, min_lat, max_lon, max_lat
+LINE_TAGS = ("line", "minor_line", "cable")
+FACILITY_TAGS = ("substation", "plant")
+KEEP_TAGS = ("power", "voltage", "name", "operator", "plant:source", "plant:output:electricity",
+             "substation", "location")
 
 
-def fetch_grid_geometries() -> list[LineString | Point]:
+def overpass_query() -> str:
     min_lon, min_lat, max_lon, max_lat = RWANDA_BBOX
-    query = f"""[out:json][timeout:120];(
-      way["power"~"^(line|minor_line|cable)$"]({min_lat},{min_lon},{max_lat},{max_lon});
-      way["power"="substation"]({min_lat},{min_lon},{max_lat},{max_lon});
-      node["power"="substation"]({min_lat},{min_lon},{max_lat},{max_lon});
-    );out geom tags;"""
+    bbox = f"{min_lat},{min_lon},{max_lat},{max_lon}"
+    return (
+        "[out:json][timeout:240];("
+        f'way["power"~"^({"|".join(LINE_TAGS)})$"]({bbox});'
+        f'way["power"~"^({"|".join(FACILITY_TAGS)})$"]({bbox});'
+        f'node["power"~"^({"|".join(FACILITY_TAGS)})$"]({bbox});'
+        ");out geom tags;"
+    )
+
+
+def fetch_overpass(query: str) -> dict:
     request = urllib.request.Request(
         OVERPASS_URL,
         data=urllib.parse.urlencode({"data": query}).encode(),
         headers={"User-Agent": "OSEAS-solar-market-reality/1.0"},
     )
-    with urllib.request.urlopen(request, timeout=150) as response:
-        elements = json.load(response).get("elements", [])
-
-    geometries: list[LineString | Point] = []
-    for element in elements:
-        if element.get("type") == "way" and element.get("geometry"):
-            geometries.append(LineString((p["lon"], p["lat"]) for p in element["geometry"]))
-        elif element.get("type") == "node" and "lat" in element:
-            geometries.append(Point(element["lon"], element["lat"]))
-    if not geometries:
-        raise RuntimeError("Overpass returned no grid lines or substations for Rwanda.")
-    return geometries
+    with urllib.request.urlopen(request, timeout=300) as response:
+        return json.load(response)
 
 
-def refresh(path: Path, union) -> None:
-    cells = pd.read_csv(path)
-    points = gpd.GeoSeries(
-        gpd.points_from_xy(cells["lon"], cells["lat"]), crs="EPSG:4326"
-    ).to_crs(epsg=UTM_EPSG)
-    cells["distance_to_grid_km"] = (
-        points.distance(union).to_numpy() / 1000.0
-    ).clip(0, 150).round(6)
-
-    # A cell is grid-present when its polygon intersects mapped grid geometry.
-    half = abs(float(cells["lon"].iloc[1] - cells["lon"].iloc[0])) / 2
-    polygons = gpd.GeoSeries(
-        [box(lon - half, lat - half, lon + half, lat + half)
-         for lon, lat in zip(cells["lon"], cells["lat"])],
-        crs="EPSG:4326",
-    ).to_crs(epsg=UTM_EPSG)
-    cells["grid_presence"] = polygons.intersects(union).astype(int)
-
-    if "predicted_solar_penetration" in cells:
-        def scale(series: pd.Series) -> pd.Series:
-            low, high = series.quantile(0.02), series.quantile(0.98)
-            if high <= low:
-                return pd.Series(0.0, index=series.index)
-            return ((series - low) / (high - low)).clip(0, 1)
-
-        parts = np.column_stack(
-            [
-                scale(np.log1p(cells["population_density"])),
-                scale(cells["distance_to_grid_km"]),
-                1 - scale(np.log1p(cells["nighttime_radiance"])),
-            ]
-        )
-        cells["energy_need_score"] = (parts @ [0.4, 0.4, 0.2]).round(4)
-        cells["market_gap_score"] = (
-            cells["energy_need_score"] * (1 - cells["predicted_solar_penetration"])
-        ).round(4)
-
-    cells.to_csv(path, index=False)
+def _props(element: dict) -> dict:
+    tags = element.get("tags", {})
+    props = {k: tags[k] for k in KEEP_TAGS if k in tags}
+    props["osm_id"] = f"{element['type']}/{element['id']}"
+    return props
 
 
-def main() -> None:
-    geometries = fetch_grid_geometries()
-    grid = gpd.GeoDataFrame({"geometry": geometries}, crs="EPSG:4326").to_crs(epsg=UTM_EPSG)
-    union = grid.geometry.union_all() if hasattr(grid.geometry, "union_all") else grid.geometry.unary_union
-    refresh(PROCESSED / "cells_features.csv", union)
-    refresh(OUTPUTS / "cells.csv", union)
-    print(f"Updated grid distances from {len(geometries)} live OSM geometries.")
+def to_feature_collections(payload: dict) -> tuple[dict, dict]:
+    """Split Overpass elements into line and facility FeatureCollections (no invented geometry)."""
+    lines, facilities = [], []
+    for element in payload.get("elements", []):
+        power = element.get("tags", {}).get("power")
+        if element["type"] == "way" and power in LINE_TAGS:
+            coords = [[p["lon"], p["lat"]] for p in element.get("geometry", [])]
+            if len(coords) >= 2:
+                lines.append({"type": "Feature", "properties": _props(element),
+                              "geometry": {"type": "LineString", "coordinates": coords}})
+        elif power in FACILITY_TAGS:
+            if element["type"] == "node":
+                lon, lat = element["lon"], element["lat"]
+            else:  # mapped as an area: use the vertex centroid as a display point
+                pts = element.get("geometry", [])
+                if not pts:
+                    continue
+                lon = sum(p["lon"] for p in pts) / len(pts)
+                lat = sum(p["lat"] for p in pts) / len(pts)
+            facilities.append({"type": "Feature", "properties": _props(element),
+                               "geometry": {"type": "Point", "coordinates": [lon, lat]}})
+    return ({"type": "FeatureCollection", "features": lines},
+            {"type": "FeatureCollection", "features": facilities})
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--from-file", type=Path, help="Use a saved Overpass JSON response instead of querying")
+    parser.add_argument("--no-build", action="store_true", help="Only write raw files; skip dataset rebuild")
+    args = parser.parse_args()
+
+    query = overpass_query()
+    payload = json.loads(args.from_file.read_text(encoding="utf-8")) if args.from_file else fetch_overpass(query)
+    lines, facilities = to_feature_collections(payload)
+    if not lines["features"]:
+        print("Overpass returned no power lines for Rwanda; raw files left unchanged.")
+        return 1
+
+    raw_dir = ROOT / "data" / "raw" / "RW"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "grid.geojson").write_text(json.dumps(lines), encoding="utf-8")
+    (raw_dir / "power_facilities.geojson").write_text(json.dumps(facilities), encoding="utf-8")
+    meta = {
+        "source": "OpenStreetMap contributors via Overpass API",
+        "licence": "ODbL 1.0",
+        "endpoint": OVERPASS_URL,
+        "query": query,
+        "osm_snapshot": payload.get("osm3s", {}).get("timestamp_osm_base"),
+        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+        "counts": {
+            "lines": len(lines["features"]),
+            "facilities": len(facilities["features"]),
+        },
+    }
+    (raw_dir / "infrastructure.meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    print(f"Saved {meta['counts']} (OSM snapshot {meta['osm_snapshot']}) to {raw_dir}")
+
+    if not args.no_build:
+        from app.config import get_settings
+        from app.pipeline.build import build_dataset
+
+        build_dataset(get_settings(), "RW")
+        print("Processed dataset rebuilt.")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

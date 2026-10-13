@@ -5,7 +5,7 @@ import math
 
 from fastapi import APIRouter, Depends, Query
 from shapely.geometry import Point, shape
-from shapely.ops import transform as transform_geometry
+import shapely
 
 from ..services.data_service import DataService
 from .deps import country_code, service_dep
@@ -25,15 +25,15 @@ async def grid_check(
     km_per_degree = 111.32
     longitude_scale = km_per_degree * max(abs(math.cos(math.radians(lat))), 1e-6)
 
-    def project(x, y, z=None):
-        return (x - lon) * longitude_scale, (y - lat) * km_per_degree
+    def project(coords):  # lon/lat -> local km offsets from the clicked point
+        return (coords - [lon, lat]) * [longitude_scale, km_per_degree]
 
     nearby = []
     for feature in local.get("features", []):
         geometry = feature.get("geometry")
         if not geometry:
             continue
-        projected = transform_geometry(project, shape(geometry))
+        projected = shapely.transform(shape(geometry), project)
         if projected.distance(Point(0, 0)) <= radius_km:
             nearby.append(feature)
     features = nearby
@@ -41,12 +41,13 @@ async def grid_check(
     voltages = sorted({int(value) / 1000 for tag in tags for value in str(tag.get("voltage", "")).split(";")
                        if value.strip().isdigit()}, reverse=True)
     counts = {
-        "lines": sum(tag.get("power") in {"line", "cable"} or tag.get("kind") == "grid_line" for tag in tags),
-        "minor": sum(tag.get("kind") == "minigrid" for tag in tags),
-        "substations": sum(tag.get("kind") == "grid_point" for tag in tags),
-        "plants": 0,
+        "lines": sum(tag.get("kind") == "grid_line" and tag.get("line_class") != "minor_line" for tag in tags),
+        "minor": sum(tag.get("line_class") == "minor_line" for tag in tags),
+        "substations": sum(tag.get("kind") == "substation" for tag in tags),
+        "plants": sum(tag.get("kind") == "plant" for tag in tags),
+        "minigrids": sum(tag.get("kind") == "minigrid" for tag in tags),
     }
     return {"type": "FeatureCollection", "features": features, "metadata": {
         "lat": lat, "lon": lon, "radius_km": radius_km, "counts": counts,
-        "voltages_kv": voltages, "source": "Processed infrastructure data", "is_live": False,
+        "voltages_kv": voltages, "source": "OpenStreetMap power infrastructure (processed snapshot)", "is_live": False,
     }}
