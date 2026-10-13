@@ -1,0 +1,72 @@
+# Pipeline configuration. One file per country; copy and edit to add a new country.
+
+country:
+  iso3: RWA
+  name: Rwanda
+  # lon_min, lat_min, lon_max, lat_max
+  bbox: [28.80, -2.90, 30.95, -1.00]
+
+reference_year: 2022
+
+grid:
+  resolution_m: 1000
+  crs: EPSG:4326          # storage CRS for rasters and vectors
+  metric_crs: EPSG:32735  # UTM 35S, used for buffers and distances in Rwanda
+
+labels:
+  # census: Rwanda PHC5 2022 (main source of lighting, h15), aggregated to admin areas
+  # dhs:    Rwanda DHS 2019-20 household recode + GPS clusters
+  source: census
+  admin_level: sector     # sector | district
+  census:
+    lighting_variable: h15
+    solar_codes: [3, 4]        # standalone solar system, private solar mini grid
+    grid_codes: [1]            # electricity from REG
+    unserved_codes: [6, 8, 9, 10, 11, 12, 13]
+  dhs:
+    urban_buffer_m: 2000
+    rural_buffer_m: 5000
+    min_households: 10
+
+features:
+  - ntl          # VIIRS annual night lights (log1p)
+  - pop          # WorldPop population per km2 (log1p)
+  - travel_min   # travel time to nearest city, minutes (log1p)
+  - built        # share of built-up land, ESA WorldCover
+  - rwi          # Meta Relative Wealth Index
+  - dist_grid    # km to nearest grid line, Gridfinder (log1p)
+log_features: [ntl, pop, travel_min, dist_grid]
+
+model:
+  target: solar_share
+  random_state: 42
+  n_splits: 5
+  block_column: district_code   # spatial block for blocked cross-validation
+  lightgbm:
+    n_estimators: 300
+    learning_rate: 0.03
+    num_leaves: 15
+    min_child_samples: 10
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    reg_lambda: 1.0
+    verbose: -1
+
+calibration:
+  # Share of households using off-grid solar nationally (census 2022: 15.6%).
+  target_share: 0.156
+  target_source: Rwanda PHC5 2022, standalone solar + private solar mini-grid
+  avg_household_size: null  # TODO: take from the census report before running calibrate
+
+export:
+  normalise_percentiles: [2, 98]
+  nodata: -9999
+
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+  outputs: outputs
+  reports: reports
+  models: models

@@ -163,3 +163,74 @@ it operates at, because that determines the job it can do:
   - [Energy Access Explorer](https://www.energyaccessexplorer.org)
   - [EAE GitHub](https://github.com/energyaccessexplorer)
   - [EAE Technical Note](https://www.wri.org/research/energy-access-explorer-data-and-methods?ap3c=IGaj6AgspJqgeKwBAGaj6AgmzCZ5Iv70Fr7H6ahniwtFr1FOgg)
+
+---
+
+## Our solution (work in progress)
+
+We are building the market-reality layer for **Rwanda** at 1 km resolution:
+
+1. **Labels:** share of households using off-grid solar for lighting, from the Rwanda
+   Population and Housing Census 2022 (sector level), upgraded later to DHS 2019-20 GPS clusters.
+2. **Features:** VIIRS night lights, WorldPop population, Meta Relative Wealth Index,
+   distance to grid (Gridfinder), travel time to cities and built-up share.
+3. **Model:** LightGBM, with random and blocked (by district) cross-validation and SHAP
+   feature analysis framed as hypotheses.
+4. **Calibration:** logit shift so the national total matches a control total (census now,
+   GOGLA sales next).
+5. **Outputs:** two EAE-conformant 0-1 rasters (off-grid solar penetration, underserved
+   market) with metadata, a limitations statement and an interactive map.
+
+### Development setup
+
+**Option A: conda (recommended on Windows)**
+
+```bash
+conda env create -f environment.yml
+conda activate solar-markets
+```
+
+**Option B: pip + venv (Python 3.10+)**
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows (macOS/Linux: source .venv/bin/activate)
+pip install -e ".[dev]"
+```
+
+Then:
+
+```bash
+cp .env.example .env                           # set GEE_PROJECT to your Earth Engine project
+python -m solar_markets.check_setup            # libraries, config, folders
+python -m solar_markets.check_setup --gee      # also connects to Earth Engine
+pytest
+```
+
+Download the input data as described in [`data/README.md`](data/README.md). Survey microdata
+must never be committed.
+
+### Running the pipeline
+
+Each stage reads `config.yml` and writes one output that the next stage reads:
+
+```bash
+python -m solar_markets.labels     # data/processed/labels.gpkg
+python -m solar_markets.features   # data/processed/feature_stack.tif, train_table.csv
+python -m solar_markets.model      # reports/cv_results.csv, outputs/solar_share_pred.tif
+python -m solar_markets.calibrate  # outputs/solar_share_calibrated.tif
+python -m solar_markets.export     # outputs/rwa_ogs_*.tif + .yml metadata
+python -m solar_markets.webmap     # docs/map.html
+```
+
+### Repository layout
+
+```
+config.yml               country, year, resolution, features, model settings
+src/solar_markets/       one module per pipeline stage + config and setup check
+tests/                   config tests; EAE conformance tests for exported layers
+data/                    raw / interim / processed (git-ignored, see data/README.md)
+outputs/                 final rasters and metadata
+reports/                 cross-validation results and figures
+docs/                    interactive map (GitHub Pages)
+```
