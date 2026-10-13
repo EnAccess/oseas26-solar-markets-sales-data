@@ -14,9 +14,9 @@ data/
 
 | Dataset | Save to | How to get it | Licence / terms |
 | --- | --- | --- | --- |
-| Rwanda Population and Housing Census 2022 (PHC5), household file | `data/raw/census/` | Register on the [NISR microdata portal](https://microdata.statistics.gov.rw/index.php/catalog/109), "Get Microdata" | NISR microdata release policy; do not redistribute |
+| Rwanda Population and Housing Census 2022 (PHC5), `PHC5_Public_microdata_2022` (one row per person, ~10% sample; Stata, SPSS or CSV) | `data/raw/census/` | Register on the [NISR microdata portal](https://microdata.statistics.gov.rw/index.php/catalog/109), "Get Microdata" | NISR microdata release policy; do not redistribute |
 | Rwanda DHS 2019-20: household recode (HR) + GPS (GE) | `data/raw/dhs/` | Request at [dhsprogram.com](https://dhsprogram.com/data/new-user-registration.cfm) (survey + GPS datasets) | DHS terms; do not redistribute |
-| Administrative boundaries ADM1-ADM3 | `data/raw/boundaries/` | [geoBoundaries](https://www.geoboundaries.org/) (RWA) | CC BY 4.0 / ODbL (check per file) |
+| Districts (ADM2) and sectors (ADM3): `geoBoundaries-RWA-ADM2.geojson`, `geoBoundaries-RWA-ADM3.geojson` | `data/raw/boundaries/` | [geoBoundaries gbOpen RWA](https://www.geoboundaries.org/) (source: Open Data Rwanda, 2012 boundaries, 416 sectors) | CC BY 4.0 |
 | Meta Relative Wealth Index (Rwanda CSV) | `data/raw/rwi/` | [Humanitarian Data Exchange](https://data.humdata.org/), search "relative wealth index" | CC BY 4.0 |
 | Gridfinder predicted grid lines | `data/raw/grid/` | [gridfinder.org](https://gridfinder.org/) (Zenodo download) | CC BY 4.0 |
 | Night lights, population, travel time, land cover | pulled by `features.py` | Google Earth Engine (no manual download) | See each Earth Engine catalogue page |
@@ -28,3 +28,5 @@ Earth Engine datasets used:
 - `WorldPop/GP/100m/pop`: WorldPop population
 - `Oxford/MAP/accessibility_to_cities_2015_v1_0`: travel time to cities
 - `ESA/WorldCover/v200`: land cover (built-up share)
+
+Small lookup tables that are safe to commit live in [`reference/`](reference/README.md).

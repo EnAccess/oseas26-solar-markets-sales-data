@@ -5,7 +5,8 @@ def test_config_loads():
     cfg = load_config(DEFAULT_CONFIG)
     assert cfg["country"]["iso3"] == "RWA"
     assert cfg["grid"]["resolution_m"] > 0
-    assert 0 < cfg["calibration"]["target_share"] < 1
+    target = cfg["calibration"]["target_share"]
+    assert target is None or 0 < target < 1
 
 
 def test_features_are_unique_and_log_features_known():

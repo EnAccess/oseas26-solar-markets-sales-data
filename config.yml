@@ -19,10 +19,25 @@ labels:
   source: census
   admin_level: sector     # sector | district
   census:
-    lighting_variable: h15
+    # PHC5_Public_microdata_2022 (NISR catalogue 109): one row per person, ~10% sample.
+    # Any of .dta / .sav / .csv placed in this folder is picked up.
+    folder: census
+    columns:
+      sector: ml03            # 4-digit sector code (first 2 digits = district)
+      urban: ml07             # 1 = urban, 2 = rural
+      household_id: hhid
+      lighting: h15           # main source of energy for lighting
+      grid_connected: h14     # electricity (grid line) connectivity, 1 = yes
+      weight: HH_weight       # household weight
     solar_codes: [3, 4]        # standalone solar system, private solar mini grid
     grid_codes: [1]            # electricity from REG
-    unserved_codes: [6, 8, 9, 10, 11, 12, 13]
+    unserved_codes: [6, 8, 9, 10, 11, 12, 13]  # kerosene, candles, firewood, batteries, flashlight, ...
+    missing_codes: [99]        # other valid codes (2, 5, 7, 14) count as "other"
+  reference: data/reference/rwa_sectors.csv
+  name_fixes: data/reference/boundary_name_fixes.csv
+  boundaries:
+    district: boundaries/geoBoundaries-RWA-ADM2.geojson
+    sector: boundaries/geoBoundaries-RWA-ADM3.geojson
   dhs:
     urban_buffer_m: 2000
     rural_buffer_m: 5000
@@ -54,10 +69,11 @@ model:
     verbose: -1
 
 calibration:
-  # Share of households using off-grid solar nationally (census 2022: 15.6%).
-  target_share: 0.156
+  # Leave null to use the weighted national values computed by the labels stage
+  # (reports/labels_summary.json); set a number to override, e.g. a GOGLA-derived share.
+  target_share: null
   target_source: Rwanda PHC5 2022, standalone solar + private solar mini-grid
-  avg_household_size: null  # TODO: take from the census report before running calibrate
+  avg_household_size: null
 
 export:
   normalise_percentiles: [2, 98]
