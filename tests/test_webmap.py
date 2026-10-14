@@ -89,14 +89,63 @@ def test_pipeline_from_features_to_map(tmp_path):
     assert ranked["unserved_hh"].is_monotonic_decreasing
 
     html = (tmp_path / "docs" / "map.html").read_text(encoding="utf-8")
-    assert "Top 10 underserved sectors" in html
-    assert "Underserved solar market (0-1)" in html and "Source: Night lights" in html
-    assert ranked.loc[0, "sector"] in html
+    assert "__MAP_DATA__" not in html and "__TITLE__" not in html
+    data = map_data(html)
 
-    # Only the first basemap (Esri, which works from a local file) is switched on at start.
+    # One entry per layer, each with an image, a colour ramp and ticks in its own units.
+    assert [layer["key"] for layer in data["layers"]] == [s["key"] for s in W.LAYERS]
+    for layer in data["layers"]:
+        assert layer["image"].startswith("data:image/png;base64,")
+        assert len(layer["stops"]) == 9 and len(layer["ticks"]) == 3
+        values = [t["value"] for t in layer["ticks"]]
+        assert values == sorted(values) and all(t["label"] for t in layer["ticks"])
+
+    # Every sector carries the numbers the details card shows for every layer.
+    feats = data["sectors"]["features"]
+    assert len(feats) == 36 and data["n_sectors"] == 36
+    for f in feats:
+        p = f["properties"]
+        for key in [s["metric"] for s in W.LAYERS] + ["rank", "sector", "district", "pt", "drivers"]:
+            assert key in p, key
+    assert sorted(f["properties"]["rank"] for f in feats) == list(range(1, 37))
+    ranks = {f["properties"]["id"]: f["properties"]["rank"] for f in feats}
+    assert [ranks[i] for i in data["top"]] == list(range(1, 11))
+    assert data["medians"]["unserved_hh"] is not None
+
+    # Starts on the underserved layer and on a basemap that also works from a local file.
+    assert data["default_layer"] == "underserved"
+    assert "arcgisonline" in data["basemaps"][data["default_basemap"]]["url"]
+    assert "tile.openstreetmap.org" not in html
+
+
+def map_data(html: str) -> dict:
     import re
 
-    shown = {url: re.search(re.escape(var) + r"\.addTo\(map_\w+\)", html) is not None
-             for var, url in re.findall(r'var (tile_layer_\w+) = L\.tileLayer\(\s*"([^"]+)"', html)}
-    assert [u for u, on in shown.items() if on] == [W.BASEMAPS[0][1]]
-    assert len(shown) == len(W.BASEMAPS)
+    m = re.search(r'<script id="map-data" type="application/json">(.*?)</script>', html, re.DOTALL)
+    assert m, "map data block missing"
+    return json.loads(m.group(1))
+
+
+def test_render_html_keeps_data_inside_its_script_block():
+    data = {"title": "T <b>", "evil": "</script><script>alert(1)</script><!--"}
+    html = W.render_html(data)
+    assert "</script><script>alert(1)" not in html
+    assert "<title>T &lt;b&gt;</title>" in html
+    assert map_data(html)["evil"] == data["evil"]
+
+
+def test_fmt():
+    assert W.fmt(0.1234, "pct") == "12%"
+    assert W.fmt(0.004, "pct") == "0.4%"
+    assert W.fmt(12345.6, "int") == "12,346"
+    assert W.fmt(2.345, "num1") == "2.3"
+    assert W.fmt(float("nan"), "num2") == "n/a"
+
+
+def test_colourise_ticks_are_in_real_units_for_log_layers():
+    values = np.array([[0.0, 1.0, 10.0], [100.0, 1000.0, np.nan]], dtype="float32")
+    uri, stops, ticks = W.colourise(values, "viridis", (0, 100), log=True)
+    assert uri.startswith("data:image/png;base64,") and len(stops) == 9
+    assert ticks[0]["value"] == pytest.approx(0.0, abs=1e-6)
+    assert ticks[-1]["value"] == pytest.approx(1000.0, rel=1e-4)
+    assert 10 < ticks[1]["value"] < 100      # midpoint on the log scale, not 500

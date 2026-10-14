@@ -19,7 +19,7 @@ dependencies:
   - lightgbm
   - shap
   - matplotlib
-  - folium
+  - pillow
   - openpyxl
   - pyreadstat
   - earthengine-api

@@ -23,7 +23,7 @@ dependencies = [
     "lightgbm>=4.3",
     "shap>=0.45",
     "matplotlib>=3.8",
-    "folium>=0.16",
+    "pillow>=10",
     "pyreadstat>=1.2",
     "openpyxl>=3.1",
     "earthengine-api>=0.1.390",
@@ -37,6 +37,9 @@ gee = ["geemap>=0.32"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+solar_markets = ["*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
