@@ -203,6 +203,27 @@ count. The training table (`data/processed/train_table.csv`, one row per sector)
 features describe where people live rather than empty land. Sectors smaller than one pixel take
 the pixel under their centre. A quick-look of every band is saved to `reports/feature_bands.png`.
 
+### Model and validation
+
+`python -m solar_markets.model` trains one LightGBM regression per target in `config.yml`
+(`solar_share` for the penetration layer, `grid_share` for the underserved layer) on the six
+features, with `log1p` applied to `ntl`, `pop`, `travel_min` and `dist_grid`.
+
+- **Two cross-validation schemes**, both in `reports/cv_results.csv`: random 5-fold, and
+  blocked 5-fold where whole districts are held out together. Neighbouring sectors are similar,
+  so random CV is optimistic; the blocked score is what to expect in a district the model has
+  never seen. Each scheme compares LightGBM with two baselines (national mean, linear
+  regression). `mae_pp` is the mean absolute error in percentage points.
+- **Feature analysis as hypotheses:** SHAP values of the final model (`reports/feature_importance.png`,
+  `reports/feature_effects.csv`). `direction` `+` means higher values of the feature go with
+  higher predictions. This is an association, not a cause.
+- **Prediction:** every pixel with all features present, clipped to 0-1, written to
+  `outputs/<target>_pred.tif`.
+- **Change-of-support check:** pixel predictions averaged back to sectors (population-weighted)
+  and compared with the labels (`reports/reaggregation.csv`, `reports/reaggregation.png`).
+  Points far from the diagonal show where the 1 km map disagrees with the sector averages it
+  was trained on.
+
 ### Development setup
 
 **Option A: conda (recommended on Windows)**
