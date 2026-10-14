@@ -24,6 +24,7 @@ dependencies:
   - earthengine-api
   - geemap
   - python-dotenv
+  - truststore
   - pytest
   - ruff
   - jupyterlab

@@ -192,7 +192,7 @@ and cached in `data/interim/ee_stack.tif`.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ntl` | night-time radiance (nW/cm²/sr) | VIIRS annual V2.2 (`NOAA/VIIRS/DNB/ANNUAL_V22`, band `average`) | 2022 | ~460 m | mean | log1p | CC BY 4.0 (EOG) |
 | `pop` | people per pixel | WorldPop (`WorldPop/GP/100m/pop`) | 2020 | 100 m | sum | log1p | CC BY 4.0 |
-| `travel_min` | minutes to the nearest city | Oxford MAP (`Oxford/MAP/accessibility_to_cities_2015_v1_0`) | 2015 | ~1 km | mean | log1p | CC BY 4.0 |
+| `travel_min` | minutes to the nearest city | Oxford MAP (`projects/malariaatlasproject/assets/accessibility/accessibility_to_cities/2015_v1_0`) | 2015 | ~1 km | mean | log1p | CC BY 4.0 |
 | `built` | share of built-up land | ESA WorldCover v200, class 50 (`ESA/WorldCover/v200`) | 2021 | 10 m | mean | none | CC BY 4.0 |
 | `rwi` | Relative Wealth Index | Meta RWI (HDX) | 2021 | ~2.4 km points | nearest point | none | CC BY-NC 4.0 |
 | `dist_grid` | km to the nearest grid line | Gridfinder (Zenodo 3628142) | 2020 | vector | distance from pixel centre | log1p | CC BY 4.0 |

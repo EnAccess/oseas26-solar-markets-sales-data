@@ -30,7 +30,13 @@ import rasterio
 from affine import Affine
 from rasterio.features import rasterize
 
-from solar_markets.config import PROJECT_ROOT, cli_args, get_paths, load_config
+from solar_markets.config import (
+    PROJECT_ROOT,
+    cli_args,
+    get_paths,
+    load_config,
+    use_system_certificates,
+)
 
 EE_BANDS = ("ntl", "pop", "travel_min", "built")
 LOCAL_BANDS = ("rwi", "dist_grid")
@@ -92,6 +98,7 @@ def init_ee():
     import ee
     from dotenv import load_dotenv
 
+    use_system_certificates()
     load_dotenv(PROJECT_ROOT / ".env")
     project = os.getenv("GEE_PROJECT")
     if not project:
@@ -106,7 +113,7 @@ def init_ee():
 
 
 def ee_image(ee, fd: dict, iso3: str, grid: Grid):
-    """Earth Engine bands aggregated onto the analysis grid (sum for population, else mean)."""
+    """Earth Engine bands aggregated onto the analysis grid (population as counts, everything else as means)."""
     proj = ee.Projection(grid.crs, list(grid.transform)[:6])
 
     def to_grid(img, reducer):
@@ -122,7 +129,13 @@ def ee_image(ee, fd: dict, iso3: str, grid: Grid):
     built = (ee.ImageCollection(fd["built"]["collection"]).first()
              .select(fd["built"]["band"]).eq(fd["built"]["class"]))
 
-    bands = [to_grid(ntl, ee.Reducer.mean()), to_grid(pop, ee.Reducer.sum()),
+    # Population counts: average the density (people per m2) and multiply by the output pixel
+    # area. A weighted Reducer.sum() returns a mean here, and an unweighted one double-counts
+    # 100 m cells that straddle two output pixels.
+    density = pop.divide(ee.Image.pixelArea())
+    pop_count = to_grid(density, ee.Reducer.mean()).multiply(ee.Image.pixelArea().reproject(proj))
+
+    bands = [to_grid(ntl, ee.Reducer.mean()), pop_count,
              to_grid(travel, ee.Reducer.mean()), to_grid(built, ee.Reducer.mean())]
     return ee.Image.cat(bands).rename(list(EE_BANDS)).toFloat().unmask(-9999)
 

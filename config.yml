@@ -59,7 +59,7 @@ feature_data:
   ee_stack: ee_stack.tif
   ntl: {collection: NOAA/VIIRS/DNB/ANNUAL_V22, band: average, year: 2022}
   pop: {collection: WorldPop/GP/100m/pop, band: population, year: 2020}
-  travel_min: {image: Oxford/MAP/accessibility_to_cities_2015_v1_0, band: accessibility}
+  travel_min: {image: projects/malariaatlasproject/assets/accessibility/accessibility_to_cities/2015_v1_0, band: accessibility}
   built: {collection: ESA/WorldCover/v200, band: Map, class: 50}   # 50 = built-up
   rwi: rwi/rwa_relative_wealth_index.csv                         # under data/raw
   grid: grid/grid.gpkg                                           # global Gridfinder file
