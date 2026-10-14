@@ -256,6 +256,26 @@ for the underserved counts), so a few extreme pixels do not squash the rest. The
 licensed CC BY-NC 4.0 because the Meta Relative Wealth Index input is non-commercial.
 Quick-looks for the slides are saved to `reports/`.
 
+### Interactive map
+
+`python -m solar_markets.webmap` writes `docs/map.html`, a single self-contained Leaflet map
+(publish it with GitHub Pages: Settings → Pages → branch, folder `/docs`):
+
+- The underserved layer is on by default; the penetration layer and the source layers (night
+  lights, population, distance to grid, wealth) can be switched on to trace a score back to its
+  inputs.
+- Clicking a sector shows its census and predicted solar share, predicted grid share,
+  unserved households, rank, and the three features that moved its prediction most (SHAP, in
+  percentage points).
+- The top 10 sectors by unserved households are marked and listed. The full ranking is in
+  `reports/top_underserved_sectors.csv`, and the per-sector table in
+  `data/processed/sector_summary.gpkg`.
+
+### Limitations
+
+What the model cannot see, where it will be wrong and who it might misallocate capital toward
+is in [`LIMITATIONS.md`](LIMITATIONS.md). Read it before using the layers for decisions.
+
 ### Development setup
 
 **Option A: conda (recommended on Windows)**

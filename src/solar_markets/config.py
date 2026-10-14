@@ -21,9 +21,11 @@ class Paths:
     outputs: Path
     reports: Path
     models: Path
+    docs: Path
 
     def ensure(self) -> None:
-        for p in (self.raw, self.interim, self.processed, self.outputs, self.reports, self.models):
+        for p in (self.raw, self.interim, self.processed, self.outputs, self.reports, self.models,
+                  self.docs):
             p.mkdir(parents=True, exist_ok=True)
 
 

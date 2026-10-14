@@ -111,3 +111,4 @@ paths:
   outputs: outputs
   reports: reports
   models: models
+  docs: docs
