@@ -21,7 +21,7 @@ from solar_markets.config import (
 
 REQUIRED = [
     "numpy", "pandas", "yaml", "geopandas", "shapely", "pyproj", "rasterio", "rasterstats",
-    "scipy", "sklearn", "lightgbm", "shap", "matplotlib", "folium", "pyreadstat", "ee", "dotenv",
+    "scipy", "sklearn", "lightgbm", "shap", "matplotlib", "PIL", "pyreadstat", "ee", "dotenv",
     "truststore",
 ]
 

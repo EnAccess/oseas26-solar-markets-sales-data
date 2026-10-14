@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>__TITLE__</title>
+<meta name="description" content="Where households in Rwanda have neither grid electricity nor solar: 1 km estimates from the 2022 census and satellite data.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H" crossorigin="anonymous">
+<style>
+  :root {
+    --ink: #14213d; --ink-2: #44506a; --muted: #6b7489; --line: #e3e6ec; --bg: #f7f7f4;
+    --card: #ffffff; --accent: #c7781a; --accent-soft: #fdf1e2; --focus: #0b63ce;
+    --grid: #2f6690; --solar: #e8a33d; --none: #8a2846; --other: #b8bcc6;
+    --shadow: 0 2px 6px rgba(20,33,61,.12), 0 8px 24px rgba(20,33,61,.10);
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body { font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: var(--ink); background: var(--bg); }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  #map { position: fixed; inset: 0; background: #e9ebe6; }
+  .raster { image-rendering: pixelated; image-rendering: crisp-edges; }
+  .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .icon { width: 20px; height: 20px; flex: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---------- search ---------- */
+  #search { position: fixed; z-index: 1001; top: 12px; left: 12px; width: 352px; }
+  #search .box { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 14px; height: 48px; }
+  #search input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
+  #search input { flex: 1; border: 0; outline: 0; font-size: 16px; background: transparent; color: var(--ink); min-width: 0; }
+  #search .iconbtn { border: 0; background: transparent; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-2); }
+  #search .iconbtn:hover { background: #f0f2f5; }
+  #results { list-style: none; margin: 6px 0 0; padding: 6px; max-height: 50vh; overflow: auto; display: none; }
+  #results.show { display: block; }
+  #results li { padding: 9px 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: baseline; }
+  #results li[aria-selected="true"], #results li:hover { background: #eef3fb; }
+  #results .kind { font-size: 12px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+  #results .empty { color: var(--muted); cursor: default; }
+
+  /* ---------- side panel (desktop) / settings screen (mobile) ---------- */
+  #panel { position: fixed; z-index: 1000; top: 72px; left: 12px; bottom: 12px; width: 352px; display: flex; flex-direction: column; overflow: hidden; }
+  #panel .head { display: flex; align-items: flex-start; gap: 10px; padding: 16px 16px 12px; border-bottom: 1px solid var(--line); }
+  #panel .head h1 { font-size: 17px; margin: 0; line-height: 1.25; }
+  #panel .head p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+  #panel .head .iconbtn, .back { border: 0; background: transparent; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+  #panel .head .iconbtn:hover, .back:hover { background: #f0f2f5; }
+  #panel .back { display: none; }
+  #panel .body { overflow: auto; padding: 4px 16px 20px; }
+  #panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 8px; }
+  .layer-group { font-size: 12px; font-weight: 600; color: var(--ink-2); margin: 12px 0 6px; }
+  .layer { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; border: 1px solid var(--line); background: #fff; border-radius: 12px; padding: 9px 10px; margin-bottom: 6px; }
+  .layer:hover { border-color: #c9d2e3; }
+  .layer[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  .layer .ramp { width: 34px; height: 34px; border-radius: 8px; flex: none; }
+  .layer b { display: block; font-size: 14px; }
+  .layer span { font-size: 12.5px; color: var(--muted); }
+  .toggle { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .toggle:last-child { border-bottom: 0; }
+  .toggle small { display: block; color: var(--muted); font-size: 12px; }
+  .switch { position: relative; width: 42px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; position: absolute; z-index: 1; }
+  .switch span { position: absolute; inset: 0; background: #c8ccd6; border-radius: 99px; transition: .15s; }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: .15s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .switch input:disabled + span { opacity: .45; }
+  .seg { display: flex; background: #eef0f4; border-radius: 10px; padding: 3px; gap: 3px; }
+  .seg button { flex: 1; border: 0; background: transparent; padding: 7px; border-radius: 8px; font-size: 14px; }
+  .seg button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.15); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  #toplist { list-style: none; margin: 0; padding: 0; }
+  #toplist li button { display: flex; gap: 10px; width: 100%; align-items: baseline; text-align: left; border: 0; background: transparent; padding: 7px 6px; border-radius: 8px; }
+  #toplist li button:hover { background: #f0f2f5; }
+  #toplist .n { width: 22px; height: 22px; border-radius: 50%; background: var(--none); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; flex: none; align-self: center; }
+  #toplist .hh { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+  #toplist .d { color: var(--muted); font-size: 12.5px; }
+  .about { font-size: 13.5px; color: var(--ink-2); }
+  .about a { color: var(--focus); }
+  .linkbtn { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+  .linkbtn:hover { background: #f5f6f8; }
+  #btn-panel { position: fixed; z-index: 1000; top: 72px; left: 12px; display: none; align-items: center; gap: 8px; border: 0; padding: 10px 14px; font-weight: 600; }
+  body.panel-collapsed #panel { display: none; }
+  body.panel-collapsed #btn-panel { display: flex; }
+
+  /* ---------- map controls ---------- */
+  #controls { position: fixed; z-index: 1000; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 8px; }
+  #controls .group { display: flex; flex-direction: column; overflow: hidden; }
+  #controls button { width: 44px; height: 44px; border: 0; background: #fff; display: grid; place-items: center; color: var(--ink); }
+  #controls button:hover { background: #f0f2f5; }
+  #controls .group button + button { border-top: 1px solid var(--line); }
+  #btn-locate.busy svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- legend ---------- */
+  #legend { position: fixed; z-index: 999; right: 12px; bottom: 28px; width: 300px; padding: 12px 14px; }
+  #legend .t { font-weight: 650; font-size: 14px; }
+  #legend .u { font-size: 12px; color: var(--muted); }
+  #legend .bar { height: 12px; border-radius: 6px; margin: 8px 0 4px; }
+  #legend .ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  #legend .note { font-size: 12px; color: var(--muted); margin-top: 6px; display: flex; align-items: center; gap: 6px; }
+  .pin-key { width: 16px; height: 16px; border-radius: 50%; background: var(--none); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--none); flex: none; }
+
+  /* ---------- top-10 pins and location ---------- */
+  .rank-pin { display: grid; place-items: center; }
+  .rank-pin span { width: 28px; height: 28px; border-radius: 50%; background: var(--none); color: #fff; font: 700 13px/28px system-ui, sans-serif; text-align: center; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .you { width: 18px; height: 18px; border-radius: 50%; background: var(--focus); border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(11,99,206,.25); }
+  .leaflet-tooltip.sector-tip { font: 600 13px system-ui, sans-serif; padding: 4px 8px; border-radius: 8px; }
+
+  /* ---------- details card ---------- */
+  #info { position: fixed; z-index: 1001; top: 12px; right: 68px; width: 372px; max-height: calc(100% - var(--legend-h, 150px) - 56px); overflow: auto; display: none; }
+  #info.show { display: block; }
+  #info .handle { display: none; }
+  #info header { position: sticky; top: 0; background: #fff; padding: 14px 14px 10px 16px; display: flex; gap: 8px; align-items: flex-start; border-bottom: 1px solid var(--line); z-index: 1; }
+  #info header .kicker { font-size: 12.5px; color: var(--muted); }
+  #info header h2 { margin: 0; font-size: 20px; line-height: 1.2; }
+  #info header .you-badge { display: inline-block; font-size: 12px; background: #e6f0fd; color: var(--focus); border-radius: 99px; padding: 2px 8px; margin-bottom: 4px; font-weight: 600; }
+  #info header button { margin-left: auto; border: 0; background: transparent; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+  #info header button:hover { background: #f0f2f5; }
+  #info .sec { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  #info .sec:last-child { border-bottom: 0; }
+  #info h3 { font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
+  .headline { border-left: 5px solid var(--accent); padding: 2px 0 2px 12px; }
+  .headline .big { font-size: 30px; font-weight: 750; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .headline .lbl { color: var(--ink-2); font-size: 14px; }
+  .headline .cmp { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .rankline { margin-top: 8px; font-size: 14px; }
+  .rankline b { color: var(--none); }
+  .stack { display: flex; height: 14px; border-radius: 7px; overflow: hidden; margin: 6px 0 8px; background: var(--other); }
+  .stack i { display: block; height: 100%; }
+  .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 13px; }
+  .keys div { display: flex; align-items: center; gap: 6px; }
+  .keys .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .keys b { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .fine { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .drivers { margin: 0; padding: 0; list-style: none; }
+  .drivers li { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; font-size: 14px; }
+  .drivers .pp { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .up { color: #1d6b3a; } .down { color: #a33a1e; }
+  table.clues { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  table.clues th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 0 0 4px; }
+  table.clues td { padding: 5px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  table.clues td:nth-child(2), table.clues td:nth-child(3), table.clues th:nth-child(2), table.clues th:nth-child(3) { text-align: right; }
+  table.clues tr.clue { cursor: pointer; }
+  table.clues tr.clue:hover td { background: #f6f8fb; }
+  table.clues tr.active td { font-weight: 700; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* ---------- mobile summary chip ---------- */
+  #chip { display: none; }
+
+  /* ---------- toast ---------- */
+  #toast { position: fixed; z-index: 2000; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px; opacity: 0; pointer-events: none; transition: .2s; max-width: calc(100% - 32px); }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---------- guided tour ---------- */
+  #tour { position: fixed; inset: 0; z-index: 3000; display: none; }
+  #tour.show { display: block; }
+  #tour .shade { position: absolute; inset: 0; background: rgba(12,20,38,.55); }
+  #tour .spot { position: absolute; border-radius: 14px; box-shadow: 0 0 0 9999px rgba(12,20,38,.55); outline: 3px solid #fff; transition: all .25s; pointer-events: none; }
+  #tour .tcard { position: absolute; width: min(360px, calc(100% - 24px)); padding: 18px 18px 14px; }
+  #tour .tcard h2 { margin: 0 0 6px; font-size: 18px; }
+  #tour .tcard p { margin: 0 0 12px; color: var(--ink-2); }
+  #tour .tnav { display: flex; align-items: center; gap: 8px; }
+  #tour .dots { display: flex; gap: 5px; margin-right: auto; }
+  #tour .dots i { width: 7px; height: 7px; border-radius: 50%; background: #d3d7e0; }
+  #tour .dots i.on { background: var(--accent); }
+  .btn { border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 600; white-space: nowrap; }
+  .btn.primary { background: var(--ink); color: #fff; }
+  .btn.ghost { background: transparent; color: var(--ink-2); }
+  .btn.ghost:hover { background: #f0f2f5; }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 899px) {
+    #search { left: 10px; right: 10px; width: auto; top: max(10px, env(safe-area-inset-top)); }
+    #panel { inset: 0; width: auto; top: 0; left: 0; bottom: 0; border-radius: 0; z-index: 2500; transform: translateX(105%); transition: transform .22s ease; display: flex !important; }
+    body.settings-open #panel { transform: none; }
+    #panel .back { display: grid; }
+    #panel .head .collapse { display: none; }
+    #panel .head { padding-top: max(14px, env(safe-area-inset-top)); }
+    #btn-panel { display: flex !important; top: auto; left: auto; right: 12px; bottom: max(18px, env(safe-area-inset-bottom)); width: 58px; height: 58px; border-radius: 50%; padding: 0; justify-content: center; background: var(--ink); color: #fff; }
+    #btn-panel .lbl { display: none; }
+    #btn-panel .icon { width: 26px; height: 26px; }
+    #chip { display: flex; position: fixed; z-index: 1000; top: calc(max(10px, env(safe-area-inset-top)) + 58px); left: 10px; max-width: calc(100% - 76px); align-items: center; gap: 8px; padding: 7px 12px 7px 8px; border: 0; border-radius: 99px; font-size: 13.5px; text-align: left; }
+    #chip .ramp { width: 26px; height: 14px; border-radius: 4px; flex: none; }
+    #chip .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #chip .txt small { color: var(--muted); }
+    #controls { top: calc(max(10px, env(safe-area-inset-top)) + 58px); right: 10px; }
+    #controls .zoom { display: none; }
+    #legend { left: 10px; right: 80px; width: auto; bottom: max(18px, env(safe-area-inset-bottom)); padding: 9px 12px; }
+    #legend .note { display: none; }
+    #info { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 62vh; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+    #info.tall { max-height: 88vh; }
+    #info .handle { display: block; width: 100%; border: 0; background: #fff; padding: 8px 0 0; }
+    #info .handle i { display: block; width: 40px; height: 5px; border-radius: 3px; background: #cfd3db; margin: 0 auto; }
+    #info header { top: 0; }
+    body.info-open #legend, body.info-open #btn-panel { display: none !important; }
+    #toast { bottom: 96px; }
+    #tour .tcard { left: 12px !important; right: 12px; width: auto; }
+    .leaflet-control-attribution { font-size: 9px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Map of Rwanda"></div>
+
+<div id="search" class="card" role="search">
+  <div class="box">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <label for="q" class="sr-only">Search a sector or district in Rwanda</label>
+    <input id="q" type="search" autocomplete="off" placeholder="Search a sector or district in Rwanda"
+           role="combobox" aria-expanded="false" aria-controls="results" aria-autocomplete="list">
+    <button class="iconbtn" id="q-clear" aria-label="Clear search" hidden>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+  <ul id="results" role="listbox" aria-label="Search results"></ul>
+</div>
+
+<button id="btn-panel" class="card" aria-label="Open layers and settings" aria-controls="panel">
+  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></svg>
+  <span class="lbl">Layers &amp; settings</span>
+</button>
+
+<button id="chip" class="card" aria-label="Current map settings; open settings"></button>
+
+<aside id="panel" class="card" aria-label="Layers and settings">
+  <div class="head">
+    <button class="back" id="btn-back" aria-label="Back to map">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18 9 12l6-6"/></svg>
+    </button>
+    <div style="flex:1">
+      <h1 id="app-title"></h1>
+      <p>Where households have neither grid nor solar &middot; 1 km estimates</p>
+    </div>
+    <button class="iconbtn collapse" id="btn-collapse" aria-label="Hide panel">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18 9 12l6-6"/></svg>
+    </button>
+  </div>
+  <div class="body">
+    <section id="sec-layers" aria-labelledby="h-layers">
+      <h2 id="h-layers">What the map shows</h2>
+      <div id="layer-list" role="radiogroup" aria-labelledby="h-layers"></div>
+    </section>
+    <section id="sec-show" aria-labelledby="h-show">
+      <h2 id="h-show">On the map</h2>
+      <div class="toggle"><div>Top 10 priority sectors<small>Numbered pins on the underserved layer</small></div>
+        <label class="switch"><input type="checkbox" id="t-top" checked aria-label="Show top 10 priority sectors"><span></span></label></div>
+      <div class="toggle"><div>Sector borders</div>
+        <label class="switch"><input type="checkbox" id="t-borders" checked aria-label="Show sector borders"><span></span></label></div>
+      <div class="toggle"><div>Place names</div>
+        <label class="switch"><input type="checkbox" id="t-labels" checked aria-label="Show place names"><span></span></label></div>
+      <div class="toggle" style="display:block"><div style="display:flex;justify-content:space-between"><span>Layer opacity</span><span id="op-val">80%</span></div>
+        <input type="range" id="t-opacity" min="20" max="100" step="5" value="80" aria-label="Layer opacity"></div>
+      <h2>Background</h2>
+      <div class="seg" id="basemap-seg" role="group" aria-label="Background map"></div>
+    </section>
+    <section id="sec-top" aria-labelledby="h-top">
+      <h2 id="h-top">Top 10 priority sectors</h2>
+      <ol id="toplist"></ol>
+      <p class="fine">Ranked by estimated households with neither grid nor solar. A shortlist for field checks, not a final decision.</p>
+    </section>
+    <section aria-labelledby="h-about">
+      <h2 id="h-about">About this map</h2>
+      <div class="about" id="about"></div>
+      <p class="actions" style="margin-top:12px"><button class="linkbtn" id="btn-guide">Show the guide again</button></p>
+    </section>
+  </div>
+</aside>
+
+<div id="controls">
+  <div class="group card zoom">
+    <button id="btn-zoom-in" aria-label="Zoom in"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button id="btn-zoom-out" aria-label="Zoom out"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+  </div>
+  <div class="group card">
+    <button id="btn-locate" aria-label="Show my location and my sector"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+    <button id="btn-home" aria-label="Show all of Rwanda"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    <button id="btn-help" aria-label="Open the guide"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg></button>
+  </div>
+</div>
+
+<div id="legend" class="card" aria-live="polite"></div>
+
+<section id="info" class="card" aria-live="polite" aria-label="Details"></section>
+
+<div id="toast" role="status"></div>
+
+<div id="tour" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+  <div class="shade"></div>
+  <div class="spot"></div>
+  <div class="tcard card">
+    <h2 id="tour-title"></h2>
+    <p id="tour-text"></p>
+    <div class="tnav">
+      <div class="dots" aria-hidden="true"></div>
+      <button class="btn ghost" id="tour-skip">Skip</button>
+      <button class="btn ghost" id="tour-back">Back</button>
+      <button class="btn primary" id="tour-next">Next</button>
+    </div>
+  </div>
+</div>
+
+<noscript><p style="position:fixed;top:40%;width:100%;text-align:center">This map needs JavaScript.</p></noscript>
+
+<script id="map-data" type="application/json">__MAP_DATA__</script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH" crossorigin="anonymous"></script>
+<script>
+(function () {
+  "use strict";
+  var D = JSON.parse(document.getElementById("map-data").textContent);
+  var $ = function (id) { return document.getElementById(id); };
+  var mobileQuery = window.matchMedia("(max-width: 899px)");
+  var isMobile = function () { return mobileQuery.matches; };
+  var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]; }); };
+  var store = {
+    get: function (k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* private mode */ } }
+  };
+
+  // ---------------------------------------------------------- formatting
+  function fmt(v, kind) {
+    if (v === null || v === undefined || !isFinite(v)) return "n/a";
+    if (kind === "pct") return (Math.abs(v) >= 0.01 || v === 0 ? Math.round(100 * v) : (100 * v).toFixed(1)) + "%";
+    if (kind === "int") return Math.round(v).toLocaleString("en-US");
+    if (kind === "num1") return v.toLocaleString("en-US", {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    return v.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  }
+  var norm = function (s) { return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[-']/g, " ").trim(); };
+  var gradient = function (stops) { return "linear-gradient(90deg," + stops.join(",") + ")"; };
+
+  // ---------------------------------------------------------- state
+  var LAYERS = {}; D.layers.forEach(function (l) { LAYERS[l.key] = l; });
+  var state = { layer: D.default_layer, basemap: D.default_basemap, opacity: 0.8,
+                top: true, borders: true, labels: true, selected: null, you: null };
+  var hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  if (LAYERS[hash.get("layer")]) state.layer = hash.get("layer");
+
+  // ---------------------------------------------------------- map
+  var bounds = L.latLngBounds(D.bounds);
+  var map = L.map("map", { zoomControl: false, minZoom: 7, maxZoom: 16, zoomSnap: 0.25, zoomDelta: 0.5,
+                           maxBounds: bounds.pad(0.6), maxBoundsViscosity: 0.9 });
+  map.attributionControl.setPrefix('<a href="https://leafletjs.com">Leaflet</a>');
+  map.createPane("sectors").style.zIndex = 420;
+  map.createPane("labels").style.zIndex = 430;
+  map.getPane("labels").style.pointerEvents = "none";
+
+  function fitPadding(sheet) {   // sheet: leave room for the details sheet that covers the bottom on phones
+    return isMobile() ? { paddingTopLeft: [10, 110], paddingBottomRight: [10, sheet ? Math.round(window.innerHeight * 0.62) + 10 : 80] }
+      : { paddingTopLeft: [document.body.classList.contains("panel-collapsed") ? 20 : 380, 20], paddingBottomRight: [70, 20] };
+  }
+  function showRwanda() { map.fitBounds(bounds, fitPadding()); }
+  // The first view waits until the page has a size (a tab opened in the background has none yet).
+  function initialView(tries) {
+    map.invalidateSize();
+    if (map.getSize().x < 50 && tries < 100) { setTimeout(function () { initialView(tries + 1); }, 100); return; }
+    var id = parseInt(hash.get("sector"), 10);
+    if (byId[id]) select(id, { fly: true }); else showRwanda();
+  }
+  map.setView(bounds.getCenter(), 8);
+
+  var base = null, labels = null;
+  function setBasemap(key) {
+    state.basemap = key;
+    var b = D.basemaps[key];
+    if (base) map.removeLayer(base);
+    if (labels) map.removeLayer(labels);
+    base = L.tileLayer(b.url, { maxZoom: 16, maxNativeZoom: key === "grey" ? 16 : 18, attribution: b.attribution }).addTo(map);
+    labels = L.tileLayer(b.labels, { pane: "labels", maxZoom: 16 });
+    if (state.labels) labels.addTo(map);
+    document.querySelectorAll("#basemap-seg button").forEach(function (btn) {
+      btn.setAttribute("aria-pressed", btn.dataset.key === key ? "true" : "false");
+    });
+  }
+
+  var raster = L.imageOverlay(LAYERS[state.layer].image, bounds,
+                              { opacity: state.opacity, className: "raster", interactive: false }).addTo(map);
+
+  // sectors
+  var byId = {};
+  var sectorStyle = function () {
+    return { color: "#1f2a44", weight: state.borders ? 0.6 : 0, opacity: 0.55, fill: true, fillColor: "#000", fillOpacity: 0 };
+  };
+  var sectors = L.geoJSON(D.sectors, {
+    pane: "sectors",
+    style: sectorStyle,
+    onEachFeature: function (f, layer) {
+      byId[f.properties.id] = layer;
+      layer.on("click", function () { select(f.properties.id, { fly: false }); });
+      layer.on("mouseover", function () { if (state.selected !== f.properties.id) layer.setStyle({ weight: 2, opacity: 0.9 }); });
+      layer.on("mouseout", function () { if (state.selected !== f.properties.id) layer.setStyle(sectorStyle()); });
+      if (!isMobile()) layer.bindTooltip(esc(f.properties.sector) + " <span style='font-weight:400;color:#6b7489'>" + esc(f.properties.district) + "</span>",
+                                         { className: "sector-tip", sticky: true, direction: "top", offset: [0, -8] });
+    }
+  }).addTo(map);
+  var props = function (id) { return byId[id] ? byId[id].feature.properties : null; };
+
+  // top-10 pins
+  var topPins = L.layerGroup();
+  D.top.forEach(function (id) {
+    var p = props(id), layer = byId[id];
+    if (!p) return;
+    var ll = p.pt ? L.latLng(p.pt[0], p.pt[1]) : layer.getBounds().getCenter();
+    L.marker(ll, { icon: L.divIcon({ className: "rank-pin", html: "<span>" + p.rank + "</span>", iconSize: [28, 28] }),
+                   title: "#" + p.rank + " " + p.sector + " (" + p.district + ")", keyboard: true, riseOnHover: true })
+      .on("click", function () { select(id, { fly: true }); }).addTo(topPins);
+  });
+  function syncPins() {
+    var on = state.top && state.layer === "underserved";
+    if (on) topPins.addTo(map); else map.removeLayer(topPins);
+    $("t-top").disabled = state.layer !== "underserved";
+  }
+
+  // ---------------------------------------------------------- statistics for comparisons
+  var allProps = D.sectors.features.map(function (f) { return f.properties; });
+  var sorted = {};
+  function share(metric, v) {   // share of sectors with a lower value
+    if (!sorted[metric]) sorted[metric] = allProps.map(function (p) { return p[metric]; }).filter(function (x) { return x !== null && isFinite(x); }).sort(function (a, b) { return a - b; });
+    var a = sorted[metric], lo = 0, hi = a.length;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (a[mid] < v) lo = mid + 1; else hi = mid; }
+    return a.length ? lo / a.length : null;
+  }
+
+  // ---------------------------------------------------------- layers
+  function renderLayerList() {
+    var html = "", group = null;
+    D.layers.forEach(function (l) {
+      if (l.group !== group) { group = l.group; html += '<div class="layer-group">' + esc(group) + "</div>"; }
+      html += '<button class="layer" role="radio" data-key="' + l.key + '" aria-checked="' + (l.key === state.layer) + '">' +
+              '<div class="ramp" style="background:' + gradient(l.stops) + '"></div>' +
+              "<div><b>" + esc(l.name) + "</b><span>" + esc(l.short) + "</span></div></button>";
+    });
+    $("layer-list").innerHTML = html;
+    $("layer-list").querySelectorAll(".layer").forEach(function (b) {
+      b.addEventListener("click", function () { setLayer(b.dataset.key); });
+    });
+  }
+  function setLayer(key) {
+    if (!LAYERS[key]) return;
+    state.layer = key;
+    raster.setUrl(LAYERS[key].image);
+    $("layer-list").querySelectorAll(".layer").forEach(function (b) { b.setAttribute("aria-checked", b.dataset.key === key ? "true" : "false"); });
+    renderLegend(); syncPins(); renderChip(); writeHash();
+    if (state.selected !== null) renderInfo(state.selected);
+  }
+  function renderLegend() {
+    var l = LAYERS[state.layer];
+    $("legend").innerHTML =
+      '<div class="t">' + esc(l.name) + '</div><div class="u">' + esc(l.unit) + " &middot; " + esc(l.short) + "</div>" +
+      '<div class="bar" style="background:' + gradient(l.stops) + '"></div>' +
+      '<div class="ticks">' + l.ticks.map(function (t) { return "<span>" + esc(t.label) + "</span>"; }).join("") + "</div>" +
+      (state.layer === "underserved" && state.top ? '<div class="note"><span class="pin-key"></span>Numbered pins: top 10 priority sectors</div>' : "") +
+      '<div class="note">Click a sector for its numbers &middot; darker = ' + esc(l.higher_is) + "</div>";
+    document.documentElement.style.setProperty("--legend-h", $("legend").offsetHeight + "px");
+  }
+  function renderChip() {
+    var l = LAYERS[state.layer];
+    $("chip").innerHTML = '<span class="ramp" style="background:' + gradient(l.stops) + '"></span>' +
+      '<span class="txt">' + esc(l.name) + (state.layer === "underserved" && state.top ? " <small>&middot; top 10 shown</small>" : "") +
+      (state.basemap === "satellite" ? " <small>&middot; satellite</small>" : "") + "</span>";
+  }
+
+  // ---------------------------------------------------------- details card
+  var METRIC_ROWS = [["unserved_hh", "underserved"], ["pred_solar", "penetration"], ["ntl", "ntl"], ["density", "pop"],
+                     ["rwi", "rwi"], ["dist_grid", "dist_grid"], ["travel_min", "travel_min"], ["built", "built"]];
+
+  function select(id, opts) {
+    var p = props(id);
+    if (!p) return;
+    if (state.selected !== null && byId[state.selected]) byId[state.selected].setStyle(sectorStyle());
+    state.selected = id;
+    byId[id].setStyle({ color: "#0b63ce", weight: 3, opacity: 1 });
+    byId[id].bringToFront();
+    if (opts && opts.fly) map.flyToBounds(byId[id].getBounds(), Object.assign({ maxZoom: 12, duration: 0.6 }, fitPadding(true)));
+    renderInfo(id, opts && opts.here);
+    writeHash();
+  }
+  function closeInfo() {
+    if (state.selected !== null && byId[state.selected]) byId[state.selected].setStyle(sectorStyle());
+    state.selected = null;
+    $("info").classList.remove("show", "tall");
+    document.body.classList.remove("info-open");
+    writeHash();
+  }
+  function compareLine(l, p) {
+    var v = p[l.metric], med = D.medians[l.metric];
+    if (v === null || v === undefined) return "";
+    var s = share(l.metric, v), pct = s === null ? null : Math.round(100 * s);
+    var txt = "Rwanda median sector: " + fmt(med, l.format);
+    if (pct !== null) txt += " &middot; " + (pct >= 50 ? "higher than " + pct + "% of sectors" : "lower than " + (100 - pct) + "% of sectors");
+    return txt;
+  }
+  function renderInfo(id, here) {
+    var p = props(id), l = LAYERS[state.layer];
+    if (!p) return;
+    var value = p[l.metric];
+    var head = '<div class="headline" style="border-color:' + l.stops[6] + '">' +
+      '<div class="big">' + fmt(value, l.format) + "</div>" +
+      '<div class="lbl">' + esc(l.metric_label) + "</div>" +
+      '<div class="cmp">' + compareLine(l, p) + "</div></div>";
+    if (state.layer === "underserved") {
+      head += '<div class="rankline">Priority rank <b>#' + p.rank + "</b> of " + D.n_sectors + " sectors" +
+              (p.census_unserved !== null ? " &middot; census: " + fmt(p.census_unserved, "pct") + " of homes" : "") + "</div>";
+    } else if (state.layer === "penetration" && p.census_solar !== null) {
+      head += '<div class="rankline">Census 2022: <b style="color:var(--ink)">' + fmt(p.census_solar, "pct") + "</b> of homes lit by solar</div>";
+    } else if (state.layer === "pop" && p.population !== null) {
+      head += '<div class="rankline">' + fmt(p.population, "int") + " people in " + fmt(p.area_km2, "num1") + " km² &middot; about " + fmt(p.households, "int") + " households</div>";
+    }
+
+    var grid = p.census_grid, sol = p.census_solar, none = p.census_unserved;
+    var lit = "";
+    if (grid !== null && sol !== null && none !== null) {
+      var other = Math.max(0, 1 - grid - sol - none);
+      lit = '<div class="sec"><h3>How homes are lit (census 2022)</h3>' +
+        '<div class="stack" role="img" aria-label="Grid ' + fmt(grid, "pct") + ", solar " + fmt(sol, "pct") + ", neither " + fmt(none, "pct") + '">' +
+        '<i style="width:' + 100 * grid + '%;background:var(--grid)"></i><i style="width:' + 100 * sol + '%;background:var(--solar)"></i>' +
+        '<i style="width:' + 100 * none + '%;background:var(--none)"></i><i style="width:' + 100 * other + '%;background:var(--other)"></i></div>' +
+        '<div class="keys"><div><span class="sw" style="background:var(--grid)"></span>Grid<b>' + fmt(grid, "pct") + "</b></div>" +
+        '<div><span class="sw" style="background:var(--solar)"></span>Solar<b>' + fmt(sol, "pct") + "</b></div>" +
+        '<div><span class="sw" style="background:var(--none)"></span>Neither<b>' + fmt(none, "pct") + "</b></div>" +
+        '<div><span class="sw" style="background:var(--other)"></span>Other<b>' + fmt(other, "pct") + "</b></div></div>" +
+        '<p class="fine">Grid and solar are split by estimate in the published census tables.</p></div>';
+    }
+    var model = '<div class="sec"><h3>Model estimate</h3><div class="keys">' +
+      "<div>Solar<b>" + fmt(p.pred_solar, "pct") + "</b></div><div>Grid<b>" + fmt(p.pred_grid, "pct") + "</b></div>" +
+      "<div>Households<b>" + fmt(p.households, "int") + "</b></div><div>Without light<b>" + fmt(p.unserved_hh, "int") + "</b></div></div></div>";
+
+    var drivers = "";
+    if (p.drivers && p.drivers.length) {
+      drivers = '<div class="sec"><h3>Why the model scores it this way</h3><ul class="drivers">' +
+        p.drivers.map(function (d) {
+          var m = d.match(/^(.*) \(([+-]?[\d.]+) pp\)$/);
+          var txt = m ? m[1] : d, pp = m ? parseFloat(m[2]) : 0;
+          return "<li><span>" + esc(txt.charAt(0).toUpperCase() + txt.slice(1)) + '</span><span class="pp ' + (pp >= 0 ? "up" : "down") + '">' +
+                 (pp >= 0 ? "&#9650; +" : "&#9660; ") + Math.abs(pp).toFixed(1).replace(/^/, pp >= 0 ? "" : "&minus;") + " pts</span></li>";
+        }).join("") + '</ul><p class="fine">Push on the predicted solar share. Associations, not proven causes.</p></div>';
+    }
+
+    var clues = '<div class="sec"><h3>All layers for this sector</h3><table class="clues"><thead><tr><th>Layer</th><th>Here</th><th>Rwanda median</th></tr></thead><tbody>' +
+      METRIC_ROWS.map(function (r) {
+        var lk = LAYERS[r[1]];
+        return '<tr class="clue' + (r[1] === state.layer ? " active" : "") + '" data-key="' + r[1] + '" tabindex="0" title="Show this layer on the map">' +
+               "<td>" + esc(lk.name) + "</td><td>" + fmt(p[r[0]], lk.format) + "</td><td>" + fmt(D.medians[r[0]], lk.format) + "</td></tr>";
+      }).join("") + '</tbody></table><p class="fine">Tap a row to show that layer. Clues are averages where people live.</p></div>';
+
+    var foot = '<div class="sec"><p class="fine" style="margin-top:0">Estimates from the 2022 census and satellite data, about 8 points off on average. ' +
+      'Use them to shortlist places to visit, not as final decisions.</p><div class="actions">' +
+      '<button class="linkbtn" id="btn-copy">Copy link to this sector</button></div></div>';
+
+    $("info").innerHTML =
+      '<button class="handle" id="info-handle" aria-label="Expand or shrink details"><i></i></button>' +
+      "<header><div>" + (here ? '<div class="you-badge">You are here</div>' : "") +
+      '<div class="kicker">Sector &middot; ' + esc(p.district) + " district</div><h2>" + esc(p.sector) + "</h2></div>" +
+      '<button id="info-close" aria-label="Close details"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>' +
+      '<div class="sec">' + head + "</div>" + lit + model + drivers + clues + foot;
+    $("info").classList.add("show");
+    $("info").scrollTop = 0;
+    document.body.classList.add("info-open");
+    $("info-close").addEventListener("click", closeInfo);
+    $("info-handle").addEventListener("click", function () { $("info").classList.toggle("tall"); });
+    $("btn-copy").addEventListener("click", copyLink);
+    $("info").querySelectorAll("tr.clue").forEach(function (tr) {
+      var go = function () { setLayer(tr.dataset.key); };
+      tr.addEventListener("click", go);
+      tr.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+    });
+  }
+
+  function renderDistrict(name) {
+    var list = allProps.filter(function (p) { return p.district === name; });
+    if (!list.length) return;
+    var group = L.featureGroup(list.map(function (p) { return byId[p.id]; }));
+    map.flyToBounds(group.getBounds(), Object.assign({ duration: 0.6 }, fitPadding()));
+    var worst = list.slice().sort(function (a, b) { return a.rank - b.rank; })[0];
+    toast(name + " district: " + list.length + " sectors. Most underserved: " + worst.sector + " (#" + worst.rank + ").");
+    select(worst.id, { fly: false });
+  }
+
+  // ---------------------------------------------------------- hash and links
+  function writeHash() {
+    var h = "layer=" + state.layer + (state.selected !== null ? "&sector=" + state.selected : "");
+    try { history.replaceState(null, "", "#" + h); } catch (e) { /* file:// in some browsers */ }
+  }
+  function copyLink() {
+    var url = location.href;
+    var done = function () { toast("Link copied"); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { prompt("Copy this link:", url); });
+    else prompt("Copy this link:", url);
+  }
+
+  // ---------------------------------------------------------- search
+  var index = [];
+  allProps.forEach(function (p) { index.push({ kind: "Sector", label: p.sector, sub: p.district, id: p.id, n: norm(p.sector) }); });
+  Array.from(new Set(allProps.map(function (p) { return p.district; }))).forEach(function (d) {
+    index.push({ kind: "District", label: d, sub: "", n: norm(d) });
+  });
+  var results = [], active = -1;
+  function parseCoords(q) {
+    var m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    return m ? L.latLng(parseFloat(m[1]), parseFloat(m[2])) : null;
+  }
+  function search(q) {
+    var n = norm(q);
+    results = [];
+    if (!n) return renderResults(q);
+    var ll = parseCoords(q);
+    if (ll) { results.push({ kind: "Coordinates", label: ll.lat.toFixed(4) + ", " + ll.lng.toFixed(4), sub: "", ll: ll }); return renderResults(q); }
+    var starts = index.filter(function (r) { return r.n.indexOf(n) === 0; });
+    var contains = index.filter(function (r) { return r.n.indexOf(n) > 0; });
+    results = starts.concat(contains).slice(0, 8);
+    renderResults(q);
+  }
+  function renderResults(q) {
+    var ul = $("results");
+    active = results.length ? 0 : -1;
+    if (!norm(q)) { ul.classList.remove("show"); $("q").setAttribute("aria-expanded", "false"); return; }
+    ul.innerHTML = results.length ? results.map(function (r, i) {
+      return '<li role="option" id="opt-' + i + '" aria-selected="' + (i === active) + '" data-i="' + i + '"><span><b>' + esc(r.label) + "</b>" +
+             (r.sub ? ' <span style="color:var(--muted)">' + esc(r.sub) + "</span>" : "") + '</span><span class="kind">' + r.kind + "</span></li>";
+    }).join("") : '<li class="empty">No sector or district in Rwanda matches "' + esc(q) + '". Try a sector name, a district, or coordinates like -1.95, 30.06.</li>';
+    ul.classList.add("show");
+    $("q").setAttribute("aria-expanded", "true");
+    ul.querySelectorAll("li[data-i]").forEach(function (li) {
+      li.addEventListener("mousedown", function (e) { e.preventDefault(); choose(+li.dataset.i); });
+    });
+  }
+  function choose(i) {
+    var r = results[i];
+    if (!r) return;
+    $("results").classList.remove("show");
+    $("q").setAttribute("aria-expanded", "false");
+    $("q").value = r.label;
+    $("q-clear").hidden = false;
+    $("q").blur();
+    if (r.kind === "Sector") select(r.id, { fly: true });
+    else if (r.kind === "District") renderDistrict(r.label);
+    else goToPoint(r.ll, false);
+  }
+  $("q").addEventListener("input", function () { $("q-clear").hidden = !this.value; search(this.value); });
+  $("q").addEventListener("focus", function () { if (this.value) search(this.value); });
+  $("q").addEventListener("blur", function () { setTimeout(function () { $("results").classList.remove("show"); }, 150); });
+  $("q").addEventListener("keydown", function (e) {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!results.length) return;
+      active = (active + (e.key === "ArrowDown" ? 1 : results.length - 1)) % results.length;
+      $("results").querySelectorAll("li[data-i]").forEach(function (li, i) { li.setAttribute("aria-selected", i === active ? "true" : "false"); });
+      $("q").setAttribute("aria-activedescendant", "opt-" + active);
+    } else if (e.key === "Enter") { e.preventDefault(); choose(Math.max(active, 0)); }
+    else if (e.key === "Escape") { $("results").classList.remove("show"); }
+  });
+  $("q-clear").addEventListener("click", function () { $("q").value = ""; this.hidden = true; $("results").classList.remove("show"); $("q").focus(); });
+
+  // ---------------------------------------------------------- location
+  function inRing(x, y, ring) {
+    var inside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      var xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function inPolygon(x, y, rings) {
+    if (!inRing(x, y, rings[0])) return false;
+    for (var k = 1; k < rings.length; k++) if (inRing(x, y, rings[k])) return false;
+    return true;
+  }
+  function sectorAt(ll) {
+    for (var i = 0; i < D.sectors.features.length; i++) {
+      var g = D.sectors.features[i].geometry, polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+      for (var k = 0; k < polys.length; k++) if (inPolygon(ll.lng, ll.lat, polys[k])) return D.sectors.features[i].properties.id;
+    }
+    return null;
+  }
+  function goToPoint(ll, here) {
+    var id = sectorAt(ll);
+    if (id === null) { toast("That point is outside Rwanda's sectors. This map covers Rwanda only."); return false; }
+    if (state.you) map.removeLayer(state.you);
+    state.you = L.marker(ll, { icon: L.divIcon({ className: "", html: '<div class="you"></div>', iconSize: [18, 18] }),
+                               title: here ? "Your location" : "Searched point", keyboard: false }).addTo(map);
+    map.flyTo(ll, Math.max(map.getZoom(), 11), { duration: 0.6 });
+    select(id, { fly: false, here: here });
+    return true;
+  }
+  $("btn-locate").addEventListener("click", function () {
+    var btn = this;
+    if (!navigator.geolocation) { toast("Your browser cannot share its location."); return; }
+    btn.classList.add("busy");
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      btn.classList.remove("busy");
+      goToPoint(L.latLng(pos.coords.latitude, pos.coords.longitude), true);
+    }, function (err) {
+      btn.classList.remove("busy");
+      toast(err.code === 1 ? "Location permission was refused. Allow it in your browser to find your sector."
+            : "Could not find your location. Try again outdoors or search your sector instead.");
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  });
+
+  // ---------------------------------------------------------- panel, settings, controls
+  function openSettings() { if (isMobile()) { document.body.classList.add("settings-open"); $("btn-back").focus(); } else { document.body.classList.remove("panel-collapsed"); } }
+  function closeSettings() { document.body.classList.remove("settings-open"); }
+  $("btn-panel").addEventListener("click", openSettings);
+  $("chip").addEventListener("click", openSettings);
+  $("btn-back").addEventListener("click", closeSettings);
+  $("btn-collapse").addEventListener("click", function () { document.body.classList.add("panel-collapsed"); $("btn-panel").focus(); });
+  $("btn-zoom-in").addEventListener("click", function () { map.zoomIn(); });
+  $("btn-zoom-out").addEventListener("click", function () { map.zoomOut(); });
+  $("btn-home").addEventListener("click", function () { closeInfo(); showRwanda(); });
+  $("t-top").addEventListener("change", function () { state.top = this.checked; syncPins(); renderLegend(); renderChip(); });
+  $("t-borders").addEventListener("change", function () { state.borders = this.checked; sectors.setStyle(sectorStyle); if (state.selected !== null) byId[state.selected].setStyle({ color: "#0b63ce", weight: 3, opacity: 1 }); });
+  $("t-labels").addEventListener("change", function () { state.labels = this.checked; if (this.checked) labels.addTo(map); else map.removeLayer(labels); });
+  $("t-opacity").addEventListener("input", function () { state.opacity = this.value / 100; raster.setOpacity(state.opacity); $("op-val").textContent = this.value + "%"; });
+  $("basemap-seg").innerHTML = Object.keys(D.basemaps).map(function (k) {
+    return '<button data-key="' + k + '" aria-pressed="false">' + esc(D.basemaps[k].name) + "</button>";
+  }).join("");
+  $("basemap-seg").querySelectorAll("button").forEach(function (b) { b.addEventListener("click", function () { setBasemap(b.dataset.key); renderChip(); }); });
+
+  $("toplist").innerHTML = D.top.map(function (id) {
+    var p = props(id);
+    return '<li><button data-id="' + id + '"><span class="n">' + p.rank + "</span><span><b>" + esc(p.sector) + '</b><br><span class="d">' + esc(p.district) + "</span></span>" +
+           '<span class="hh">' + fmt(p.unserved_hh, "int") + " hh</span></button></li>";
+  }).join("");
+  $("toplist").querySelectorAll("button").forEach(function (b) {
+    b.addEventListener("click", function () { if (state.layer !== "underserved") setLayer("underserved"); closeSettings(); select(+b.dataset.id, { fly: true }); });
+  });
+
+  $("app-title").textContent = D.title;
+  $("about").innerHTML =
+    "<p>Funders need to know where families still have no electric light. Night-time satellite images cannot tell a village lit by small solar lamps from one with no light at all. " +
+    "This map combines the " + esc(D.country) + " census " + esc(D.year) + " with six satellite and open-data clues to estimate, for every square kilometre, where homes have neither grid electricity nor solar.</p>" +
+    "<p>About <b>" + fmt(D.totals.unserved_hh, "int") + "</b> of " + fmt(D.totals.households, "int") + " households had neither in 2022 (model estimate). " +
+    "Estimates are about 8 percentage points off on average in a district the model has not seen.</p>" +
+    '<p><a href="' + D.links.limitations + '" target="_blank" rel="noopener">What the map cannot see</a> &middot; ' +
+    '<a href="' + D.links.repo + '" target="_blank" rel="noopener">Code and data sources</a></p>';
+
+  // ---------------------------------------------------------- toast
+  var toastTimer;
+  function toast(msg) {
+    var t = $("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("show"); }, 4200);
+  }
+
+  // ---------------------------------------------------------- guided tour
+  var STEPS = [
+    { title: "Welcome", text: "This map shows where households in " + D.country + " still have neither grid electricity nor solar, so support can reach the places the market has missed. This short guide shows you around." },
+    { el: function () { return $("legend"); }, title: "Read the colours",
+      text: "The colours show one layer at a time. The legend explains them; on the underserved layer, darker means more households without light. Numbered pins mark the top 10 priority sectors." },
+    { el: function () { return isMobile() ? $("btn-panel") : $("sec-layers"); }, title: "Choose what the map shows",
+      text: "Switch between the results and the six clues the model uses: night lights, population, wealth, distance to the grid, travel time and buildings. The legend, pins and details follow your choice." },
+    { el: function () { return $("map"); }, box: "center", title: "Tap a sector for details",
+      text: "Each sector shows its number for the current layer, how it compares with the rest of Rwanda, how homes are lit, and why the model scores it the way it does." },
+    { el: function () { return $("search"); }, title: "Search", text: "Find any sector or district in Rwanda by name, or type coordinates such as -1.95, 30.06." },
+    { el: function () { return $("btn-locate"); }, title: "Where am I?",
+      text: "Find the sector you are standing in and see its overview. Your browser will ask for permission; your location stays on your device." },
+    { el: function () { return isMobile() ? $("chip") : $("sec-top"); },
+      title: function () { return isMobile() ? "Your current settings" : "Priority list"; },
+      text: function () { return isMobile() ? "This chip shows what the map is set to. Tap it, or the round button at the bottom, to change layers and settings, then go back to the map."
+                                             : "The 10 sectors with the most households without light. Click one to fly to it. Use it as a shortlist for field visits."; } },
+    { el: function () { return $("btn-help"); }, title: "You're ready", text: "Open this guide again any time with the question-mark button." }
+  ];
+  var step = 0;
+  function placeTour() {
+    var s = STEPS[step], spot = document.querySelector("#tour .spot"), card = document.querySelector("#tour .tcard");
+    var el = s.el ? s.el() : null;
+    if (el && el.closest && el.closest("#panel")) el.scrollIntoView({ block: "nearest" });
+    $("tour-title").textContent = typeof s.title === "function" ? s.title() : s.title;
+    $("tour-text").textContent = typeof s.text === "function" ? s.text() : s.text;
+    document.querySelector("#tour .dots").innerHTML = STEPS.map(function (_, i) { return '<i class="' + (i === step ? "on" : "") + '"></i>'; }).join("");
+    $("tour-back").style.visibility = step === 0 ? "hidden" : "visible";
+    $("tour-next").textContent = step === STEPS.length - 1 ? "Start exploring" : "Next";
+    var vw = window.innerWidth, vh = window.innerHeight;
+    if (isMobile()) {   // card at the bottom, or at the top when the highlighted part is low on the screen
+      var low = el && el.getClientRects().length > 0 && s.box !== "center" && el.getBoundingClientRect().top > vh * 0.5;
+      card.style.top = low ? "max(12px, env(safe-area-inset-top))" : "auto";
+      card.style.bottom = low ? "auto" : "max(16px, env(safe-area-inset-bottom))";
+    } else {
+      card.style.bottom = "auto";
+    }
+    if (el && el.getClientRects().length > 0) {
+      var r = el.getBoundingClientRect(), pad = 6;
+      if (s.box === "center") r = { left: vw / 2 - 90, top: vh / 2 - 60, width: 180, height: 120, right: vw / 2 + 90, bottom: vh / 2 + 60 };
+      spot.style.display = "block";
+      spot.style.left = (r.left - pad) + "px"; spot.style.top = (r.top - pad) + "px";
+      spot.style.width = (r.width + 2 * pad) + "px"; spot.style.height = (r.height + 2 * pad) + "px";
+      document.querySelector("#tour .shade").style.display = "none";
+      if (!isMobile()) {
+        var cw = Math.min(360, vw - 24), ch = card.offsetHeight || 180;
+        var left = Math.min(Math.max(12, r.left), vw - cw - 12);
+        var top = r.bottom + 14 + ch < vh ? r.bottom + 14 : Math.max(12, r.top - ch - 14);
+        if (r.width > vw * 0.5) { left = vw / 2 - cw / 2; top = Math.min(vh - ch - 24, r.bottom + 14 > vh - ch ? vh / 2 + 80 : r.bottom + 14); }
+        if (r.left > vw * 0.6 && r.top < vh * 0.5) { left = r.left - cw - 14; top = r.top; }
+        if (r.right < vw * 0.4 && r.width < vw * 0.4) { left = r.right + 14; top = Math.max(12, Math.min(r.top, vh - ch - 12)); }
+        card.style.left = left + "px"; card.style.top = top + "px";
+      }
+    } else {
+      spot.style.display = "none";
+      document.querySelector("#tour .shade").style.display = "block";
+      if (!isMobile()) { card.style.left = (vw / 2 - Math.min(360, vw - 24) / 2) + "px"; card.style.top = (vh / 2 - 100) + "px"; }
+    }
+  }
+  function openTour() {
+    closeSettings();
+    if (!isMobile()) document.body.classList.remove("panel-collapsed");
+    step = 0; $("tour").classList.add("show"); placeTour(); $("tour-next").focus();
+  }
+  function endTour() { $("tour").classList.remove("show"); store.set("osm-guide-done", "1"); }
+  $("tour-next").addEventListener("click", function () { if (step === STEPS.length - 1) endTour(); else { step++; placeTour(); } });
+  $("tour-back").addEventListener("click", function () { if (step > 0) { step--; placeTour(); } });
+  $("tour-skip").addEventListener("click", endTour);
+  $("btn-help").addEventListener("click", openTour);
+  $("btn-guide").addEventListener("click", openTour);
+  window.addEventListener("resize", function () { if ($("tour").classList.contains("show")) placeTour(); });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if ($("tour").classList.contains("show")) endTour();
+    else if (document.body.classList.contains("settings-open")) closeSettings();
+    else if (state.selected !== null) closeInfo();
+  });
+  mobileQuery.addEventListener("change", function () { closeSettings(); renderChip(); });
+
+  // ---------------------------------------------------------- start
+  renderLayerList(); setBasemap(state.basemap); renderLegend(); renderChip(); syncPins();
+  initialView(0);
+  window.addEventListener("load", function () { if (state.selected === null) { map.invalidateSize(); showRwanda(); } });
+  if (!store.get("osm-guide-done")) setTimeout(openTour, 500);
+  window.__solarMap = { map: map, state: state, select: select, setLayer: setLayer, sectorAt: sectorAt, goToPoint: goToPoint };
+})();
+</script>
+</body>
+</html>
