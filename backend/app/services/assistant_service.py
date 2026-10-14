@@ -1,11 +1,11 @@
-"""Data-grounded assistant: Claude answers using read-only tools over the project's own services.
+"""Data-grounded assistant: Gemini answers using read-only tools over the project's own services.
 
 Design:
   * Tools call the same services as the map, cell API and reports (no separate analytics).
   * Tools are a fixed allow-list of read-only functions with validated, size-limited inputs:
     no code, SQL, shell or file access is reachable from natural language.
   * A deterministic scope guard declines clearly unrelated questions before any model call.
-  * Without ANTHROPIC_API_KEY the endpoint still returns the retrieved evidence, but no generated
+  * Without GOOGLE_API_KEY the endpoint still returns the retrieved evidence, but no generated
     answer, and says how to enable the assistant. No AI answer is ever simulated.
   * Only aggregated project data (cell indicators, scores, source notes) is sent to the provider.
 """
@@ -15,13 +15,15 @@ import json
 import logging
 import re
 
+from openai import OpenAI
+
 from ..config import Settings
 from . import location_service, report_service
 from .market_gap import METHOD
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_TURNS = 6
+MAX_TOOL_TURNS = 3
 MAX_CELLS = report_service.MAX_REPORT_CELLS
 OUT_OF_SCOPE = (
     "I can only help with energy access and off-grid solar market analysis for Rwanda using this "
@@ -66,54 +68,119 @@ Grounding rules:
 Naming: refer to places by their names (the "name" field, e.g. "Cyembogo, Matimba"), never by internal
 IDs such as RW_0412; those IDs are only for calling tools.
 
-Style: plain English, short paragraphs or bullets, lead with the answer, then the evidence, then
-caveats and what to verify in the field. Method summary: {METHOD['formula']}."""
+Output style:
+- Write for an energy-access analyst preparing a briefing, not for a chat user.
+- Lead with one sentence that directly answers the question, then structure the body.
+- For location answers, use this structure where it applies:
+    1. One-line summary (place name, cell ID, district).
+    2. "Key figures" — a short bulleted list. For each figure, give the value, unit, and
+       evidence label in parentheses, e.g. "Population: 15,255 (external estimate, WorldPop 2020)".
+    3. "Interpretation" — two to four sentences explaining what the figures mean for
+       off-grid solar market assessment.
+    4. "What to verify in the field" — one to three short bullets.
+- For comparisons, use a compact table or clearly labelled parallel bullets.
+- For methodology or data-coverage questions, use a short bulleted list with source names and dates.
+- Keep the tone formal and neutral. No slang, no exclamation marks, no "let's" or "you'll want to".
+- Spell out numbers under 10; use numerals for measurements and percentages.
+- Always show units (people, people/km², kWh/m²/day, km, nW/cm²/sr, RWI index points).
+- Always attach an evidence label to any number: observed, external estimate, derived, or model prediction.
+- Do not open with "Sure" or "Of course". Do not close with "Let me know if you need anything else".
+- Never use emojis.
+
+Method summary: {METHOD['formula']}."""
 
 TOOLS = [
     {
-        "name": "resolve_location",
-        "description": "Match a place in Rwanda (district, province, grid cell ID like RW_0412, or 'lat, lon') "
-                       "to grid cells in the dataset. Returns matched type, name, cell count and IDs.",
-        "input_schema": {"type": "object", "properties": {
-            "query": {"type": "string", "description": "Place name, cell ID or coordinates"}},
-            "required": ["query"], "additionalProperties": False},
+        "type": "function",
+        "function": {
+            "name": "resolve_location",
+            "description": "Match a place in Rwanda (district, province, grid cell ID like RW_0412, or 'lat, lon') "
+                           "to grid cells in the dataset. Returns matched type, name, cell count and IDs.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Place name, cell ID or coordinates"}
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
     },
     {
-        "name": "get_cell_evidence",
-        "description": "All indicators for one 5 km grid cell: values, units, evidence type, source, "
-                       "opportunity score, drivers, missing inputs and an evidence-based interpretation.",
-        "input_schema": {"type": "object", "properties": {
-            "cell_id": {"type": "string", "description": "Grid cell ID, e.g. RW_0412"}},
-            "required": ["cell_id"], "additionalProperties": False},
+        "type": "function",
+        "function": {
+            "name": "get_cell_evidence",
+            "description": "All indicators for one 5 km grid cell: values, units, evidence type, source, "
+                           "opportunity score, drivers, missing inputs and an evidence-based interpretation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cell_id": {"type": "string", "description": "Grid cell ID, e.g. RW_0412"}
+                },
+                "required": ["cell_id"],
+                "additionalProperties": False,
+            },
+        },
     },
     {
-        "name": "summarize_cells",
-        "description": "Aggregate evidence for a set of grid cells (e.g. the user's selection or a district): "
-                       "population, density, radiance, grid distance, district survey shares, score range, "
-                       "highest-priority cells and cells with missing evidence.",
-        "input_schema": {"type": "object", "properties": {
-            "cell_ids": {"type": "array", "items": {"type": "string"}, "description": f"Up to {MAX_CELLS} cell IDs"}},
-            "required": ["cell_ids"], "additionalProperties": False},
+        "type": "function",
+        "function": {
+            "name": "summarize_cells",
+            "description": "Aggregate evidence for a set of grid cells (e.g. the user's selection or a district): "
+                           "population, density, radiance, grid distance, district survey shares, score range, "
+                           "highest-priority cells and cells with missing evidence.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cell_ids": {"type": "array", "items": {"type": "string"}, "description": f"Up to {MAX_CELLS} cell IDs"}
+                },
+                "required": ["cell_ids"],
+                "additionalProperties": False,
+            },
+        },
     },
     {
-        "name": "compare_areas",
-        "description": "Compare two to five districts, provinces or cells side by side using the same summary.",
-        "input_schema": {"type": "object", "properties": {
-            "queries": {"type": "array", "items": {"type": "string"}, "description": "Place names or cell IDs"}},
-            "required": ["queries"], "additionalProperties": False},
+        "type": "function",
+        "function": {
+            "name": "compare_areas",
+            "description": "Compare two to five districts, provinces or cells side by side using the same summary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "queries": {"type": "array", "items": {"type": "string"}, "description": "Place names or cell IDs"}
+                },
+                "required": ["queries"],
+                "additionalProperties": False,
+            },
+        },
     },
     {
-        "name": "get_methodology",
-        "description": "Market-gap formula, data sources with dates and licences, model status and known limitations.",
-        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "type": "function",
+        "function": {
+            "name": "get_methodology",
+            "description": "Market-gap formula, data sources with dates and licences, model status and known limitations.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
     },
     {
-        "name": "prepare_report",
-        "description": "Prepare a downloadable PDF/CSV report for the given cell IDs. Returns a summary; the app "
-                       "shows the download button.",
-        "input_schema": {"type": "object", "properties": {
-            "cell_ids": {"type": "array", "items": {"type": "string"}}},
-            "required": ["cell_ids"], "additionalProperties": False},
+        "type": "function",
+        "function": {
+            "name": "prepare_report",
+            "description": "Prepare a downloadable PDF/CSV report for the given cell IDs. Returns a summary; the app "
+                           "shows the download button.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cell_ids": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["cell_ids"],
+                "additionalProperties": False,
+            },
+        },
     },
 ]
 
@@ -257,61 +324,93 @@ def answer(svc, settings: Settings, code: str, question: str, history: list[dict
                 "message": "The AI assistant is not configured. Set ANTHROPIC_API_KEY in backend/.env and restart "
                            "the API. The evidence below comes directly from the project data."}
 
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=settings.assistant_timeout_s,
-                                 max_retries=2)
+    # Use Google AI Studio through its OpenAI-compatible endpoint.
+    client = OpenAI(
+        api_key=settings.anthropic_api_key,  # your Google AI Studio key
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        timeout=settings.assistant_timeout_s,
+        max_retries=4,
+    )
     context = _context_note(selected, focused, focused_area)
     messages = [{"role": m["role"], "content": m["content"]} for m in history[-10:]]
     messages.append({"role": "user", "content": f"{question}\n\n[App context: {context}]" if context else question})
 
     try:
         for _ in range(MAX_TOOL_TURNS):
-            response = client.beta.messages.create(
+            response = client.chat.completions.create(
                 model=settings.assistant_model,
-                max_tokens=8000,
-                system=SYSTEM_PROMPT,
-                tools=TOOLS,
                 messages=messages,
-                output_config={"effort": "medium"},
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
+                tools=TOOLS,
+                tool_choice="auto",
+                max_tokens=8000,
             )
-            if response.stop_reason == "refusal":
-                return {**base, "status": "refused", "evidence": tools.evidence,
-                        "answer": "The model declined to answer this request. " + OUT_OF_SCOPE}
-            if response.stop_reason != "tool_use":
-                text = "\n".join(b.text for b in response.content if b.type == "text").strip()
+            choice = response.choices[0]
+            message = choice.message
+            if not message.tool_calls:
+                text = (message.content or "").strip()
                 return {**base, "status": "ok", "answer": text or "No answer was returned.",
                         "evidence": tools.evidence, "report_cell_ids": tools.report_cell_ids,
                         "model": response.model}
-            messages.append({"role": "assistant", "content": response.content})
+            messages.append(message)
             results = []
-            for block in response.content:
-                if block.type != "tool_use":
+            for tool_call in message.tool_calls:
+                name = tool_call.function.name
+                try:
+                    args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+                except json.JSONDecodeError as exc:
+                    results.append({"role": "tool", "tool_call_id": tool_call.id,
+                                    "content": f"Error parsing arguments: {exc}"})
                     continue
                 try:
-                    content, is_error = json.dumps(tools.run(block.name, dict(block.input)), default=str), False
+                    content = json.dumps(tools.run(name, args), default=str)
                 except (ValueError, KeyError, TypeError) as exc:
-                    content, is_error = f"Error: {exc}", True
-                results.append({"type": "tool_result", "tool_use_id": block.id, "content": content,
-                                "is_error": is_error})
-            messages.append({"role": "user", "content": results})
+                    content = f"Error: {exc}"
+                results.append({"role": "tool", "tool_call_id": tool_call.id, "content": content})
+            messages.extend(results)
         return {**base, "status": "incomplete", "evidence": tools.evidence,
                 "answer": "The question needed more lookups than allowed. Please ask about fewer places."}
-    except anthropic.AuthenticationError:
+    except Exception as exc:
+        logger.warning("Assistant API error: %s", exc)
+
+        # Friendly handling for common Google Gemini errors.
+        text = str(exc)
+        status_code = getattr(exc, "status_code", None)
+
+        if status_code == 429 or "429" in text or "quota" in text.lower():
+            # Try to pull the retry delay out of the message if present.
+            import re as _re
+            m = _re.search(r"retry in (\d+(?:\.\d+)?)s", text)
+            wait = int(float(m.group(1))) + 1 if m else 30
+            message = (
+                f"The assistant has hit its rate limit. "
+                f"Please wait about {wait} seconds and try again. "
+                f"This is a temporary limit on the free tier of the language model."
+            )
+        elif status_code == 503 or "503" in text or "UNAVAILABLE" in text:
+            message = (
+                "The language-model service is temporarily overloaded. "
+                "Please try again in a moment."
+            )
+        elif status_code == 401 or status_code == 403 or "authentication" in text.lower() or "api key" in text.lower():
+            message = (
+                "The assistant's API key was rejected. "
+                "Please check the key configured on the backend."
+            )
+        elif status_code == 404 or "not found" in text.lower():
+            message = (
+                "The configured language model is not available. "
+                "Please check the model name in the backend configuration."
+            )
+        elif "timeout" in text.lower():
+            message = (
+                "The language-model service took too long to respond. "
+                "Please try again, or ask about fewer locations at once."
+            )
+        else:
+            message = (
+                "The assistant could not reach the language-model service. "
+                "Please try again in a moment. If the problem continues, contact the administrator."
+            )
+
         return {**base, "status": "error", "evidence": tools.evidence,
-                "answer": None, "message": "The configured ANTHROPIC_API_KEY was rejected."}
-    except anthropic.RateLimitError:
-        return {**base, "status": "error", "evidence": tools.evidence,
-                "answer": None, "message": "The language-model service is rate limited. Try again shortly."}
-    except anthropic.APITimeoutError:
-        return {**base, "status": "error", "evidence": tools.evidence,
-                "answer": None, "message": "The language-model service timed out."}
-    except anthropic.APIStatusError as exc:
-        logger.warning("Assistant API error %s: %s", exc.status_code, exc.message)
-        return {**base, "status": "error", "evidence": tools.evidence,
-                "answer": None, "message": f"The language-model service returned an error ({exc.status_code})."}
-    except anthropic.APIConnectionError:
-        return {**base, "status": "error", "evidence": tools.evidence,
-                "answer": None, "message": "Could not reach the language-model service."}
+                "answer": None, "message": message}
