@@ -1,0 +1,39 @@
+{
+  "survey": "Rwanda DHS 2025",
+  "households": 14427,
+  "national": {
+    "solar": 0.19601240877166295,
+    "grid": 0.5385949900832803,
+    "none": 0.26539260114505675
+  },
+  "agreement": {
+    "solar share, census labels (solar/grid split estimated)": {
+      "n_districts": 30,
+      "pearson_r": 0.7907043645012739,
+      "rank_r": 0.7592880978865405,
+      "mae_pp": 7.003206606339711,
+      "mean_diff_pp": -6.036407149556313
+    },
+    "solar share, our calibrated 1 km model": {
+      "n_districts": 30,
+      "pearson_r": 0.842296520284946,
+      "rank_r": 0.7094549499443827,
+      "mae_pp": 7.362315077933397,
+      "mean_diff_pp": -6.671426388112386
+    },
+    "grid share, census labels": {
+      "n_districts": 30,
+      "pearson_r": 0.9144608942626321,
+      "rank_r": 0.8229143492769745,
+      "mae_pp": 8.005907587423646,
+      "mean_diff_pp": -6.833660437402172
+    },
+    "neither grid nor solar, census labels (measured)": {
+      "n_districts": 30,
+      "pearson_r": 0.6766013623596419,
+      "rank_r": 0.5123470522803115,
+      "mae_pp": 13.63128379996909,
+      "mean_diff_pp": 12.352833953627256
+    }
+  }
+}

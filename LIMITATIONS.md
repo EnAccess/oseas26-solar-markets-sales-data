@@ -20,6 +20,11 @@ brackets.
 - "Underserved" means households with neither grid nor solar as their main light. It does not
   measure ability or willingness to pay.
 
+**Independent check.** The Rwanda DHS 2025 survey (14,427 households, solar asked separately)
+agrees with our district pattern: correlation 0.79 for the census solar labels and 0.84 for the
+model [`reports/dhs_validation.json`]. Our levels are about 6 points lower, which is three years
+of solar growth since the 2022 census (DHS 2025: solar 19.6% nationally).
+
 ## 2. Where it will be wrong
 
 - **Inside a sector.** Labels are sector averages (416 sectors). The model never sees a single
