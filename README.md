@@ -323,18 +323,31 @@ Quick-looks for the slides are saved to `reports/`.
 
 ### Interactive map
 
-`python -m solar_markets.webmap` writes `docs/map.html`, a single self-contained Leaflet map
-(publish it with GitHub Pages: Settings → Pages → branch, folder `/docs`):
+`python -m solar_markets.webmap` writes `docs/map.html`, one self-contained page (Leaflet, data
+embedded) for desktop and mobile, published with GitHub Pages
+(<https://pazzo123.github.io/oseas26-solar-markets-sales-data/map.html>):
 
-- The underserved layer is on by default; the penetration layer and the source layers (night
-  lights, population, distance to grid, wealth) can be switched on to trace a score back to its
-  inputs.
-- Clicking a sector shows its census and predicted solar share, predicted grid share,
-  unserved households, rank, and the three features that moved its prediction most (SHAP, in
-  percentage points).
-- The top 10 sectors by unserved households are marked and listed. The full ranking is in
-  `reports/top_underserved_sectors.csv`, and the per-sector table in
-  `data/processed/sector_summary.gpkg`.
+- **One layer at a time, with its own legend**: the two results (underserved market, solar
+  penetration) and the six clues the model uses (night lights, population, wealth, distance to the
+  grid, travel time, built-up area). Legends are in real units; the top-10 priority pins show on
+  the underserved layer.
+- **Sector details follow the active layer**: its value, the Rwanda median sector and the share of
+  sectors below it, how homes are lit (census 2022), the model estimate, the three SHAP drivers,
+  and a table of every layer for that sector (click a row to switch the map to it).
+- **Search** any of Rwanda's 416 sectors or 30 districts, or coordinates inside Rwanda.
+- **My location** finds the sector you are in and opens its overview (the position stays in the
+  browser).
+- **Guided tour** on the first visit (remembered in the browser; the ? button reopens it).
+- **Mobile**: search at the top, a summary chip of the current settings, the location button near
+  the top, a full-screen settings screen with a back button, and a bottom sheet for details.
+- **Shareable links**: the address remembers the layer and sector, e.g.
+  `map.html#layer=underserved&sector=5212`.
+- Background: Esri grey or satellite imagery, with place names on top (Esri tiles also load when
+  the file is opened locally).
+
+The full ranking is in `reports/top_underserved_sectors.csv` and the per-sector table in
+`data/processed/sector_summary.gpkg`. The page layout lives in
+`src/solar_markets/webmap_template.html`.
 
 ### Limitations
 
