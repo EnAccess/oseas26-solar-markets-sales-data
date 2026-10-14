@@ -181,6 +181,28 @@ We are building the market-reality layer for **Rwanda** at 1 km resolution:
 5. **Outputs:** two EAE-conformant 0-1 rasters (off-grid solar penetration, underserved
    market) with metadata, a limitations statement and an interactive map.
 
+### Features
+
+`python -m solar_markets.features` builds `data/processed/feature_stack.tif`: one band per
+feature on a 30 arc-second grid (~0.93 km, EPSG:4326, 258 x 228 pixels over Rwanda), NaN
+outside the country. Earth Engine bands are aggregated on the server onto exactly this grid
+and cached in `data/interim/ee_stack.tif`.
+
+| Band | Meaning | Source | Year | Native resolution | Aggregation to 1 km | Model transform | Licence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ntl` | night-time radiance (nW/cm²/sr) | VIIRS annual V2.2 (`NOAA/VIIRS/DNB/ANNUAL_V22`, band `average`) | 2022 | ~460 m | mean | log1p | CC BY 4.0 (EOG) |
+| `pop` | people per pixel | WorldPop (`WorldPop/GP/100m/pop`) | 2020 | 100 m | sum | log1p | CC BY 4.0 |
+| `travel_min` | minutes to the nearest city | Oxford MAP (`Oxford/MAP/accessibility_to_cities_2015_v1_0`) | 2015 | ~1 km | mean | log1p | CC BY 4.0 |
+| `built` | share of built-up land | ESA WorldCover v200, class 50 (`ESA/WorldCover/v200`) | 2021 | 10 m | mean | none | CC BY 4.0 |
+| `rwi` | Relative Wealth Index | Meta RWI (HDX) | 2021 | ~2.4 km points | nearest point | none | CC BY-NC 4.0 |
+| `dist_grid` | km to the nearest grid line | Gridfinder (Zenodo 3628142) | 2020 | vector | distance from pixel centre | log1p | CC BY 4.0 |
+
+Distance to the grid is measured on a raster padded by 30 km, so lines just across the border
+count. The training table (`data/processed/train_table.csv`, one row per sector) holds the
+**population-weighted mean** of each band inside the sector (plain mean for `pop`), so the
+features describe where people live rather than empty land. Sectors smaller than one pixel take
+the pixel under their centre. A quick-look of every band is saved to `reports/feature_bands.png`.
+
 ### Development setup
 
 **Option A: conda (recommended on Windows)**

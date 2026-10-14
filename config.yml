@@ -10,6 +10,8 @@ reference_year: 2022
 
 grid:
   resolution_m: 1000
+  # 30 arc-seconds (~0.93 km in Rwanda): the native grid of WorldPop 1 km and Oxford MAP.
+  resolution_deg: 0.008333333333333333
   crs: EPSG:4326          # storage CRS for rasters and vectors
   metric_crs: EPSG:32735  # UTM 35S, used for buffers and distances in Rwanda
 
@@ -51,6 +53,20 @@ features:
   - rwi          # Meta Relative Wealth Index
   - dist_grid    # km to nearest grid line, Gridfinder (log1p)
 log_features: [ntl, pop, travel_min, dist_grid]
+
+feature_data:
+  # Earth Engine bands are downloaded once to data/interim/<ee_stack>; delete it to re-download.
+  ee_stack: ee_stack.tif
+  ntl: {collection: NOAA/VIIRS/DNB/ANNUAL_V22, band: average, year: 2022}
+  pop: {collection: WorldPop/GP/100m/pop, band: population, year: 2020}
+  travel_min: {image: Oxford/MAP/accessibility_to_cities_2015_v1_0, band: accessibility}
+  built: {collection: ESA/WorldCover/v200, band: Map, class: 50}   # 50 = built-up
+  rwi: rwi/rwa_relative_wealth_index.csv                         # under data/raw
+  grid: grid/grid.gpkg                                           # global Gridfinder file
+  grid_clipped: grid/gridfinder_rwa.gpkg                         # country clip, made once
+  # Pad the raster by this many km when measuring distance to the grid, so lines just
+  # across the border count.
+  grid_pad_km: 30
 
 model:
   target: solar_share
