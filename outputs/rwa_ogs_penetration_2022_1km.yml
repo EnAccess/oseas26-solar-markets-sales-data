@@ -1,0 +1,35 @@
+name: Off-grid solar penetration, Rwanda
+file: rwa_ogs_penetration_2022_1km.tif
+version: 0.1 (OSEAS 2026 midpoint)
+direction: 1 = highest predicted share of households using off-grid solar; 0 = no predicted solar use;
+  nodata where (almost) nobody lives
+units: dimensionless index, 0-1
+reference_year: 2022
+resolution: 30 arc-seconds (0.008333 deg, ~1 km), EPSG:4326
+extent: Rwanda national boundary
+nodata: -9999
+normalisation: min-max between percentile 2 (0.02376) and percentile 98 (0.3147), clipped to [0, 1]
+method: LightGBM regression of the household share using off-grid solar for lighting, trained on census
+  sector labels with night lights, population, wealth, grid distance, travel time and built-up share;
+  calibrated to the national total by a logit shift.
+labels: Rwanda Population and Housing Census 2022 (PHC5, NISR), main source of lighting per sector from
+  the published tables C1.3, C1.5 and 8.12 (full census); the solar vs grid split per sector is estimated,
+  see LIMITATIONS.md
+features:
+- VIIRS annual night lights V2.2, Earth Observation Group (CC BY 4.0)
+- WorldPop 100 m population (CC BY 4.0)
+- Oxford MAP accessibility to cities 2015 (CC BY 4.0)
+- ESA WorldCover v200, built-up class (CC BY 4.0)
+- Meta Relative Wealth Index, Chi et al. 2022 (CC BY-NC 4.0)
+- Gridfinder predicted grid lines, Arderne et al. 2020 (CC BY 4.0)
+validation: 'LightGBM, solar_share: random CV R2 = 0.31, MAE = 7.6 pp; blocked by district_code CV R2
+  = 0.21, MAE = 8.0 pp'
+calibration: 13.9% of households (Rwanda PHC5 2022, households whose main light is solar (labels_summary.json));
+  average household size 4.06; logit shift -0.062
+limitations: see LIMITATIONS.md
+authors:
+- PAZZO123
+- irumvag
+- Raissa12best
+- Theogene120
+licence: CC BY-NC 4.0 (layers); code under the repository licence

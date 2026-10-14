@@ -1,0 +1,34 @@
+# Conda environment (recommended on Windows: GDAL/rasterio install cleanly from conda-forge).
+#   conda env create -f environment.yml
+#   conda activate solar-markets
+name: solar-markets
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - pyyaml
+  - geopandas
+  - shapely
+  - pyproj
+  - rasterio
+  - rasterstats
+  - scipy
+  - scikit-learn
+  - lightgbm
+  - shap
+  - matplotlib
+  - folium
+  - openpyxl
+  - pyreadstat
+  - earthengine-api
+  - geemap
+  - python-dotenv
+  - truststore
+  - pytest
+  - ruff
+  - jupyterlab
+  - pip
+  - pip:
+      - -e .

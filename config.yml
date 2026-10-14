@@ -1,0 +1,136 @@
+# Pipeline configuration. One file per country; copy and edit to add a new country.
+
+country:
+  iso3: RWA
+  name: Rwanda
+  # lon_min, lat_min, lon_max, lat_max
+  bbox: [28.80, -2.90, 30.95, -1.00]
+
+reference_year: 2022
+
+grid:
+  resolution_m: 1000
+  # 30 arc-seconds (~0.93 km in Rwanda): the native grid of WorldPop 1 km and Oxford MAP.
+  resolution_deg: 0.008333333333333333
+  crs: EPSG:4326          # storage CRS for rasters and vectors
+  metric_crs: EPSG:32735  # UTM 35S, used for buffers and distances in Rwanda
+
+labels:
+  # census:        Rwanda PHC5 2022 public microdata (h15, solar separate), needs a NISR login
+  # census_tables: published PHC5 2022 tables, no login; solar vs grid split is estimated
+  #                (see src/solar_markets/census_tables.py)
+  # dhs:           Rwanda DHS 2019-20 household recode + GPS clusters (not implemented yet)
+  source: census_tables
+  admin_level: sector     # sector | district
+  census:
+    # PHC5_Public_microdata_2022 (NISR catalogue 109): one row per person, ~10% sample.
+    # Any of .dta / .sav / .csv placed in this folder is picked up.
+    folder: census
+    columns:
+      sector: ml03            # 4-digit sector code (first 2 digits = district)
+      urban: ml07             # 1 = urban, 2 = rural
+      household_id: hhid
+      lighting: h15           # main source of energy for lighting
+      grid_connected: h14     # electricity (grid line) connectivity, 1 = yes
+      weight: HH_weight       # household weight
+    solar_codes: [3, 4]        # standalone solar system, private solar mini grid
+    grid_codes: [1]            # electricity from REG
+    unserved_codes: [6, 8, 9, 10, 11, 12, 13]  # kerosene, candles, firewood, batteries, flashlight, ...
+    missing_codes: [99]        # other valid codes (2, 5, 7, 14) count as "other"
+  census_tables:
+    # NISR "RPHC5 Thematic Report: Housing and Households Characteristics" Excel tables
+    file: census_tables/housing_households_characteristics.xlsx   # under data/raw
+  reference: data/reference/rwa_sectors.csv
+  name_fixes: data/reference/boundary_name_fixes.csv
+  boundaries:
+    district: boundaries/geoBoundaries-RWA-ADM2.geojson
+    sector: boundaries/geoBoundaries-RWA-ADM3.geojson
+  dhs:
+    urban_buffer_m: 2000
+    rural_buffer_m: 5000
+    min_households: 10
+
+features:
+  - ntl          # VIIRS annual night lights (log1p)
+  - pop          # WorldPop population per km2 (log1p)
+  - travel_min   # travel time to nearest city, minutes (log1p)
+  - built        # share of built-up land, ESA WorldCover
+  - rwi          # Meta Relative Wealth Index
+  - dist_grid    # km to nearest grid line, Gridfinder (log1p)
+log_features: [ntl, pop, travel_min, dist_grid]
+
+feature_data:
+  # Earth Engine bands are downloaded once to data/interim/<ee_stack>; delete it to re-download.
+  ee_stack: ee_stack.tif
+  ntl: {collection: NOAA/VIIRS/DNB/ANNUAL_V22, band: average, year: 2022}
+  pop: {collection: WorldPop/GP/100m/pop, band: population, year: 2020}
+  travel_min: {image: projects/malariaatlasproject/assets/accessibility/accessibility_to_cities/2015_v1_0, band: accessibility}
+  built: {collection: ESA/WorldCover/v200, band: Map, class: 50}   # 50 = built-up
+  rwi: rwi/rwa_relative_wealth_index.csv                         # under data/raw
+  grid: grid/grid.gpkg                                           # global Gridfinder file
+  grid_clipped: grid/gridfinder_rwa.gpkg                         # country clip, made once
+  # Pad the raster by this many km when measuring distance to the grid, so lines just
+  # across the border count.
+  grid_pad_km: 30
+
+model:
+  # One model per target: solar_share is the penetration layer; grid_share feeds the
+  # underserved layer (unserved = 1 - grid - solar, playbook 11.1).
+  targets: [solar_share, grid_share]
+  random_state: 42
+  n_splits: 5
+  block_column: district_code   # spatial block for blocked cross-validation
+  # Small trees and strong regularisation: only ~416 sector labels.
+  lightgbm:
+    n_estimators: 200
+    learning_rate: 0.03
+    num_leaves: 7
+    min_child_samples: 20
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    reg_lambda: 5.0
+    verbose: -1
+
+calibration:
+  # Leave null to use the weighted national values computed by the labels stage
+  # (reports/labels_summary.json); set a number to override, e.g. a GOGLA-derived share.
+  target_share: null
+  target_source: Rwanda PHC5 2022, households whose main light is solar
+  avg_household_size: null
+
+validation:
+  dhs:
+    # Rwanda DHS 2025 household recode (needs an approved DHS account; never commit it).
+    year: 2025
+    household_file: dhs/2025/RWHR91DT/RWHR91FL.dta   # under data/raw
+    columns:
+      district: shdistrict   # same district codes as the census (11 ... 57)
+      weight: hv005          # household weight, 6 implied decimals
+      light: hv262           # type of light at home, solar separate from electricity
+    solar_codes: [2]         # solar lantern / standalone solar system
+    grid_codes: [1]          # electricity
+    missing_codes: [99]
+
+export:
+  normalise_percentiles: [2, 98]
+  # Pixels with fewer people than this are nodata in the penetration layer (parks, lakes).
+  min_population: 5
+  nodata: -9999
+  version: "0.1 (OSEAS 2026 midpoint)"
+  labels_description: >-
+    Rwanda Population and Housing Census 2022 (PHC5, NISR), main source of lighting per sector
+    from the published tables C1.3, C1.5 and 8.12 (full census); the solar vs grid split per
+    sector is estimated, see LIMITATIONS.md
+  authors: [PAZZO123, irumvag, Raissa12best, Theogene120]
+  # The Meta RWI input is CC BY-NC 4.0, so the layers carry its non-commercial term.
+  licence: CC BY-NC 4.0 (layers); code under the repository licence
+
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+  outputs: outputs
+  reports: reports
+  models: models
+  docs: docs
