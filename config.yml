@@ -1,0 +1,104 @@
+# Pipeline configuration. One file per country; copy and edit to add a new country.
+
+country:
+  iso3: RWA
+  name: Rwanda
+  # lon_min, lat_min, lon_max, lat_max
+  bbox: [28.80, -2.90, 30.95, -1.00]
+
+reference_year: 2022
+
+grid:
+  resolution_m: 1000
+  # 30 arc-seconds (~0.93 km in Rwanda): the native grid of WorldPop 1 km and Oxford MAP.
+  resolution_deg: 0.008333333333333333
+  crs: EPSG:4326          # storage CRS for rasters and vectors
+  metric_crs: EPSG:32735  # UTM 35S, used for buffers and distances in Rwanda
+
+labels:
+  # census: Rwanda PHC5 2022 (main source of lighting, h15), aggregated to admin areas
+  # dhs:    Rwanda DHS 2019-20 household recode + GPS clusters
+  source: census
+  admin_level: sector     # sector | district
+  census:
+    # PHC5_Public_microdata_2022 (NISR catalogue 109): one row per person, ~10% sample.
+    # Any of .dta / .sav / .csv placed in this folder is picked up.
+    folder: census
+    columns:
+      sector: ml03            # 4-digit sector code (first 2 digits = district)
+      urban: ml07             # 1 = urban, 2 = rural
+      household_id: hhid
+      lighting: h15           # main source of energy for lighting
+      grid_connected: h14     # electricity (grid line) connectivity, 1 = yes
+      weight: HH_weight       # household weight
+    solar_codes: [3, 4]        # standalone solar system, private solar mini grid
+    grid_codes: [1]            # electricity from REG
+    unserved_codes: [6, 8, 9, 10, 11, 12, 13]  # kerosene, candles, firewood, batteries, flashlight, ...
+    missing_codes: [99]        # other valid codes (2, 5, 7, 14) count as "other"
+  reference: data/reference/rwa_sectors.csv
+  name_fixes: data/reference/boundary_name_fixes.csv
+  boundaries:
+    district: boundaries/geoBoundaries-RWA-ADM2.geojson
+    sector: boundaries/geoBoundaries-RWA-ADM3.geojson
+  dhs:
+    urban_buffer_m: 2000
+    rural_buffer_m: 5000
+    min_households: 10
+
+features:
+  - ntl          # VIIRS annual night lights (log1p)
+  - pop          # WorldPop population per km2 (log1p)
+  - travel_min   # travel time to nearest city, minutes (log1p)
+  - built        # share of built-up land, ESA WorldCover
+  - rwi          # Meta Relative Wealth Index
+  - dist_grid    # km to nearest grid line, Gridfinder (log1p)
+log_features: [ntl, pop, travel_min, dist_grid]
+
+feature_data:
+  # Earth Engine bands are downloaded once to data/interim/<ee_stack>; delete it to re-download.
+  ee_stack: ee_stack.tif
+  ntl: {collection: NOAA/VIIRS/DNB/ANNUAL_V22, band: average, year: 2022}
+  pop: {collection: WorldPop/GP/100m/pop, band: population, year: 2020}
+  travel_min: {image: Oxford/MAP/accessibility_to_cities_2015_v1_0, band: accessibility}
+  built: {collection: ESA/WorldCover/v200, band: Map, class: 50}   # 50 = built-up
+  rwi: rwi/rwa_relative_wealth_index.csv                         # under data/raw
+  grid: grid/grid.gpkg                                           # global Gridfinder file
+  grid_clipped: grid/gridfinder_rwa.gpkg                         # country clip, made once
+  # Pad the raster by this many km when measuring distance to the grid, so lines just
+  # across the border count.
+  grid_pad_km: 30
+
+model:
+  target: solar_share
+  random_state: 42
+  n_splits: 5
+  block_column: district_code   # spatial block for blocked cross-validation
+  lightgbm:
+    n_estimators: 300
+    learning_rate: 0.03
+    num_leaves: 15
+    min_child_samples: 10
+    subsample: 0.8
+    subsample_freq: 1
+    colsample_bytree: 0.8
+    reg_lambda: 1.0
+    verbose: -1
+
+calibration:
+  # Leave null to use the weighted national values computed by the labels stage
+  # (reports/labels_summary.json); set a number to override, e.g. a GOGLA-derived share.
+  target_share: null
+  target_source: Rwanda PHC5 2022, standalone solar + private solar mini-grid
+  avg_household_size: null
+
+export:
+  normalise_percentiles: [2, 98]
+  nodata: -9999
+
+paths:
+  raw: data/raw
+  interim: data/interim
+  processed: data/processed
+  outputs: outputs
+  reports: reports
+  models: models
