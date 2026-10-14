@@ -136,8 +136,9 @@ def build_map(summary: gpd.GeoDataFrame, rasters: dict[str, tuple[np.ndarray, ob
     m = folium.Map(location=centre, zoom_start=9, tiles=None, control_scale=True)
     # Esri's light grey basemap also loads when map.html is opened as a local file;
     # OpenStreetMap's servers refuse requests without a website address (HTTP 403).
-    for name, url, attr in BASEMAPS:
-        folium.TileLayer(url, name=name, attr=attr, max_zoom=16).add_to(m)
+    # Only the first is switched on; Leaflet would otherwise show the last one added.
+    for i, (name, url, attr) in enumerate(BASEMAPS):
+        folium.TileLayer(url, name=name, attr=attr, max_zoom=16, show=i == 0).add_to(m)
 
     under, pen = rasters["underserved"], rasters["penetration"]
     colour_overlay(under, bounds, "Underserved solar market (0-1)", "magma_r", True,

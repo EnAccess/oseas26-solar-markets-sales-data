@@ -92,3 +92,11 @@ def test_pipeline_from_features_to_map(tmp_path):
     assert "Top 10 underserved sectors" in html
     assert "Underserved solar market (0-1)" in html and "Source: Night lights" in html
     assert ranked.loc[0, "sector"] in html
+
+    # Only the first basemap (Esri, which works from a local file) is switched on at start.
+    import re
+
+    shown = {url: re.search(re.escape(var) + r"\.addTo\(map_\w+\)", html) is not None
+             for var, url in re.findall(r'var (tile_layer_\w+) = L\.tileLayer\(\s*"([^"]+)"', html)}
+    assert [u for u, on in shown.items() if on] == [W.BASEMAPS[0][1]]
+    assert len(shown) == len(W.BASEMAPS)
