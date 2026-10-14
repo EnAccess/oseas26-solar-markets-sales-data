@@ -8,7 +8,7 @@ from app.services import assistant_service as A
 
 
 def settings(key=None):
-    return SimpleNamespace(anthropic_api_key=key, assistant_model="claude-opus-5-5", assistant_timeout_s=5)
+    return SimpleNamespace(anthropic_api_key=key, assistant_model="gemini-3.6-flash", assistant_timeout_s=5)
 
 
 def block(**kw):
@@ -16,7 +16,7 @@ def block(**kw):
 
 
 def message(content, stop="end_turn"):
-    return SimpleNamespace(content=content, stop_reason=stop, model="claude-opus-5-5")
+    return SimpleNamespace(content=content, stop_reason=stop, model="gemini-3.6-flash")
 
 
 @pytest.mark.parametrize("question", ["How did Ronaldo score his last goal?", "Write me a poem about cats"])
@@ -91,7 +91,7 @@ def test_tool_loop_grounds_answer_and_prepares_report(svc):
     second_call = client.return_value.beta.messages.create.call_args_list[1].kwargs
     tool_result = second_call["messages"][-1]["content"][0]
     assert tool_result["type"] == "tool_result" and tool_result["is_error"] is False
-    assert second_call["model"] == "claude-opus-5-5"
+    assert second_call["model"] == "gemini-3.6-flash"
 
 
 def test_tool_errors_are_returned_to_model_not_raised(svc):
