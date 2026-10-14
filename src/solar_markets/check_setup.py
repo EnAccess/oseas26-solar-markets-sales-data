@@ -11,11 +11,18 @@ import importlib
 import os
 import sys
 
-from solar_markets.config import DEFAULT_CONFIG, PROJECT_ROOT, get_paths, load_config
+from solar_markets.config import (
+    DEFAULT_CONFIG,
+    PROJECT_ROOT,
+    get_paths,
+    load_config,
+    use_system_certificates,
+)
 
 REQUIRED = [
     "numpy", "pandas", "yaml", "geopandas", "shapely", "pyproj", "rasterio", "rasterstats",
     "scipy", "sklearn", "lightgbm", "shap", "matplotlib", "folium", "pyreadstat", "ee", "dotenv",
+    "truststore",
 ]
 
 
@@ -35,6 +42,7 @@ def check_gee() -> bool:
     import ee
     from dotenv import load_dotenv
 
+    use_system_certificates()
     load_dotenv(PROJECT_ROOT / ".env")
     project = os.getenv("GEE_PROJECT")
     if not project:

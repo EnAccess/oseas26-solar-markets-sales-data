@@ -44,6 +44,18 @@ def get_paths(cfg: dict[str, Any], root: Path = PROJECT_ROOT) -> Paths:
     return Paths(**{name: (root / p[name]).resolve() for name in Paths.__dataclass_fields__})
 
 
+def use_system_certificates() -> None:
+    """Verify HTTPS against the operating system's certificate store instead of certifi's list.
+
+    Antivirus HTTPS scanning (e.g. Avast) and company proxies re-sign traffic with a root
+    certificate that is only in the Windows store, so Earth Engine calls fail with
+    CERTIFICATE_VERIFY_FAILED otherwise.
+    """
+    import truststore
+
+    truststore.inject_into_ssl()
+
+
 def cli_args(description: str) -> argparse.Namespace:
     """Common command-line arguments for every pipeline stage."""
     parser = argparse.ArgumentParser(description=description)

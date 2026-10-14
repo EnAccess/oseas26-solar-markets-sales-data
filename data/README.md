@@ -26,7 +26,7 @@ Earth Engine datasets used:
 
 - `NOAA/VIIRS/DNB/ANNUAL_V22`: VIIRS annual night lights
 - `WorldPop/GP/100m/pop`: WorldPop population
-- `Oxford/MAP/accessibility_to_cities_2015_v1_0`: travel time to cities
+- `projects/malariaatlasproject/assets/accessibility/accessibility_to_cities/2015_v1_0`: travel time to cities (Oxford MAP)
 - `ESA/WorldCover/v200`: land cover (built-up share)
 
 Small lookup tables that are safe to commit live in [`reference/`](reference/README.md).
