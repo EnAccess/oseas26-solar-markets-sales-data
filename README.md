@@ -211,6 +211,22 @@ district is Nyaruguru (−16.9 pp), whose unusually high solar use (39%) the mod
   neither grid nor solar companies.
 - **H4.** Grid share rises with built-up area, night lights, density and wealth, as expected.
 
+**Independent check with the Rwanda DHS 2025 survey** (`python -m solar_markets.validate`,
+`reports/dhs_validation.*`). DHS 2025 asked 14,427 households their main type of light, with
+solar separate from grid, and is designed for district estimates. Across the 30 districts:
+
+| Compared with DHS 2025 | Correlation r | Rank correlation | Ours − DHS (level) |
+| --- | --- | --- | --- |
+| Solar share, census labels (estimated solar/grid split) | 0.79 | 0.76 | −6.0 pp |
+| Solar share, our calibrated 1 km model | 0.84 | 0.71 | −6.7 pp |
+| Grid share, census labels | 0.91 | 0.82 | −6.8 pp |
+| Neither grid nor solar, census labels | 0.68 | 0.51 | +12.4 pp |
+
+The district pattern of our solar estimates agrees with an independent survey, which supports
+the estimated solar/grid split. The level gap is three years of growth: nationally DHS 2025
+finds solar 19.6%, grid 53.9% and neither 26.5%, against 13.9%, 47.1% and 38.5% in the 2022
+census. Only district aggregates are written; DHS household data stays in `data/raw`.
+
 ### Labels
 
 `python -m solar_markets.labels` builds one row per sector (416) with the share of households
@@ -365,6 +381,7 @@ python -m solar_markets.model      # reports/cv_results.csv, outputs/solar_share
 python -m solar_markets.calibrate  # outputs/solar_share_calibrated.tif
 python -m solar_markets.export     # outputs/rwa_ogs_*.tif + .yml metadata
 python -m solar_markets.webmap     # docs/map.html
+python -m solar_markets.validate   # reports/dhs_validation.* (needs the DHS 2025 file)
 ```
 
 ### Repository layout

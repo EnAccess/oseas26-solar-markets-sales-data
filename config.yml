@@ -99,6 +99,19 @@ calibration:
   target_source: Rwanda PHC5 2022, households whose main light is solar
   avg_household_size: null
 
+validation:
+  dhs:
+    # Rwanda DHS 2025 household recode (needs an approved DHS account; never commit it).
+    year: 2025
+    household_file: dhs/2025/RWHR91DT/RWHR91FL.dta   # under data/raw
+    columns:
+      district: shdistrict   # same district codes as the census (11 ... 57)
+      weight: hv005          # household weight, 6 implied decimals
+      light: hv262           # type of light at home, solar separate from electricity
+    solar_codes: [2]         # solar lantern / standalone solar system
+    grid_codes: [1]          # electricity
+    missing_codes: [99]
+
 export:
   normalise_percentiles: [2, 98]
   # Pixels with fewer people than this are nodata in the penetration layer (parks, lakes).
