@@ -181,6 +181,53 @@ We are building the market-reality layer for **Rwanda** at 1 km resolution:
 5. **Outputs:** two EAE-conformant 0-1 rasters (off-grid solar penetration, underserved
    market) with metadata, a limitations statement and an interactive map.
 
+### Results (midpoint, Rwanda 2022)
+
+| CV scheme | Target | Mean baseline R² | Linear R² | LightGBM R² | LightGBM MAE |
+| --- | --- | --- | --- | --- | --- |
+| Random 5-fold | solar share | −0.02 | 0.26 | 0.31 | 7.6 pp |
+| Blocked by district | solar share | −0.04 | 0.23 | **0.21** | **8.0 pp** |
+| Random 5-fold | grid share | −0.01 | 0.62 | 0.67 | 10.5 pp |
+| Blocked by district | grid share | −0.02 | 0.61 | **0.63** | **11.3 pp** |
+
+416 sectors, full `reports/cv_results.csv`. Random CV overstates accuracy because neighbouring
+sectors are similar; the blocked score is what to expect in a district the model has never
+seen. Grid access is predictable from what satellites see; solar use much less so. Under
+blocked CV LightGBM does not beat a linear model on solar share, which we report as a finding:
+with 416 labels and an estimated solar/grid split, the signal is weak.
+
+After calibration (logit shift −0.06: the model's national level was already close), pixel
+predictions averaged back to districts differ from the census by 4.3 pp on average; the worst
+district is Nyaruguru (−16.9 pp), whose unusually high solar use (39%) the model under-predicts.
+
+**Feature analysis, as hypotheses (associations in the model, not causes)**
+(`reports/feature_importance.png`, `reports/feature_effects.csv`):
+
+- **H1.** Sectors with lower population density and less built-up land have higher predicted
+  solar penetration: solar fills in where the grid is thin.
+- **H2.** Longer travel time to a city goes with higher predicted solar penetration.
+- **H3.** Distance to the grid alone is a weaker signal than density: the most remote pixels
+  are not the ones with the most solar, consistent with remote, poor areas being reached by
+  neither grid nor solar companies.
+- **H4.** Grid share rises with built-up area, night lights, density and wealth, as expected.
+
+### Labels
+
+`python -m solar_markets.labels` builds one row per sector (416) with the share of households
+whose main light is grid electricity, solar, an unserved source (kerosene, candles, firewood,
+batteries, flashlight, lantern) or other. Two sources, set by `labels.source` in `config.yml`:
+
+- **`census_tables` (current, no login):** the published PHC5 2022 tables, which cover the full
+  census (3.3 million households). The sector table reports grid and solar together as
+  "electricity", so the **electrified** and **unserved** shares per sector are measured, but the
+  **split into solar and grid is estimated**: solar ≈ electrified − grid-connected per sector,
+  scaled within each province to the published province solar share (Table 8.12) and capped at
+  the electrified share. National result: solar 13.9%, grid 47.1%, unserved 38.5%, matching the
+  published national figures.
+- **`census` (preferred when available):** the public microdata (10% sample, needs a NISR
+  microdata account), which reports solar separately for each household, so no split is
+  needed. Switching is one line in `config.yml`.
+
 ### Features
 
 `python -m solar_markets.features` builds `data/processed/feature_stack.tif`: one band per
@@ -251,8 +298,10 @@ to 0-1 (1 = high), nodata -9999 outside the country, each with a `.yml` metadata
 | Underserved solar market | `rwa_ogs_underserved_2022_1km.tif` | most households with neither grid nor solar per pixel | none, or nobody lives there |
 
 Unserved households per pixel = households x max(0, 1 - predicted grid share - calibrated solar
-share). Normalisation is a robust min-max between the 2nd and 98th percentiles (after `log1p`
-for the underserved counts), so a few extreme pixels do not squash the rest. The layers are
+share). Normalisation is a robust min-max between the 2nd and 98th percentiles, so a few extreme
+pixels do not squash the rest; counts are kept linear so the largest unserved populations stand
+out. The penetration layer is nodata where fewer than 5 people live in a pixel (national parks,
+lakes): a household share means nothing there. The layers are
 licensed CC BY-NC 4.0 because the Meta Relative Wealth Index input is non-commercial.
 Quick-looks for the slides are saved to `reports/`.
 

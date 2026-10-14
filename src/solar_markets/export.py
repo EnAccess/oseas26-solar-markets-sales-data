@@ -9,9 +9,11 @@ Owner:   C (model); see Part 11 of the team playbook.
 
     python -m solar_markets.export --config config.yml
 
-Layer 1 (penetration) shows where off-grid solar has arrived. Layer 2 (underserved) shows
-households with neither grid nor solar per pixel: h * max(0, 1 - grid - solar). Both are
-rescaled to 0-1 with a robust min-max (clipped at percentiles), 1 = high.
+Layer 1 (penetration) shows where off-grid solar has arrived; it is nodata where fewer than
+`export.min_population` people live in a pixel. Layer 2 (underserved) shows households with
+neither grid nor solar per pixel: h * max(0, 1 - grid - solar). Both are rescaled to 0-1 with
+a robust min-max (clipped at percentiles), 1 = high. Counts are not log-transformed, so the
+largest unserved populations stand out as hotspots.
 """
 
 from __future__ import annotations
@@ -74,8 +76,8 @@ def metadata(cfg: dict, layer: dict, norm: tuple[float, float], cv: pd.DataFrame
              cal: dict | None) -> dict:
     ex, country = cfg["export"], cfg["country"]
     lo_pct, hi_pct = ex["normalise_percentiles"]
-    norm_text = (f"{'log1p, then ' if layer['log'] else ''}min-max between the {lo_pct}th "
-                 f"({norm[0]:.4g}) and {hi_pct}th ({norm[1]:.4g}) percentiles, clipped to [0, 1]")
+    norm_text = (f"{'log1p, then ' if layer['log'] else ''}min-max between percentile {lo_pct} "
+                 f"({norm[0]:.4g}) and percentile {hi_pct} ({norm[1]:.4g}), clipped to [0, 1]")
     cal_text = ("not available (run solar_markets.calibrate)" if cal is None else
                 f"{cal['target_share']:.1%} of households ({cal['target_source']}); "
                 f"average household size {cal['avg_household_size']:.2f}; "
@@ -114,11 +116,11 @@ def layers(cfg: dict) -> list[dict]:
          "file": f"{iso}_ogs_penetration_{year}_1km.tif", "log": False,
          "targets": ["solar_share"],
          "direction": "1 = highest predicted share of households using off-grid solar; "
-                      "0 = no predicted solar use",
+                      "0 = no predicted solar use; nodata where (almost) nobody lives",
          "description": "Off-grid solar penetration (0-1, 1 = highest)",
          "method": model},
         {"key": "underserved", "title": "Underserved solar market",
-         "file": f"{iso}_ogs_underserved_{year}_1km.tif", "log": True,
+         "file": f"{iso}_ogs_underserved_{year}_1km.tif", "log": False,
          "targets": ["solar_share", "grid_share"],
          "direction": "1 = most households with neither grid electricity nor off-grid solar "
                       "per pixel; 0 = none (or nobody lives there)",
@@ -137,7 +139,7 @@ def save_quicklook(arr: np.ndarray, title: str, cmap: str, out: Path) -> None:
     fig, ax = plt.subplots(figsize=(6, 5.2))
     im = ax.imshow(arr, cmap=cmap, vmin=0, vmax=1)
     fig.colorbar(im, ax=ax, shrink=0.8)
-    ax.set_title(title)
+    ax.set_title(title, fontsize=10)
     ax.set_axis_off()
     fig.tight_layout()
     fig.savefig(out, dpi=150)
@@ -163,7 +165,9 @@ def run(cfg: dict) -> None:
         pop = src.read(list(src.descriptions).index("pop") + 1).astype("float32")
     households = pop / cal["avg_household_size"]
 
-    values = {"penetration": solar,
+    # A share of households means nothing where nobody lives (national parks, lakes); the
+    # underserved count is simply ~0 there.
+    values = {"penetration": np.where(pop >= ex["min_population"], solar, np.nan),
               "underserved": unserved_households(households, grid_share, solar)}
     for layer in layers(cfg):
         arr, lo, hi = normalise(values[layer["key"]], pct, log=layer["log"])

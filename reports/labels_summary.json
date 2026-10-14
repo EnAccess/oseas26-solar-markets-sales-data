@@ -1,0 +1,15 @@
+{
+  "solar_share": 0.13918123228997842,
+  "grid_share": 0.47112126929254694,
+  "unserved_share": 0.3847540074796023,
+  "other_share": 0.004736290439674916,
+  "electrified_share": 0.6103025015825254,
+  "grid_connected_share": 0.5253690324162043,
+  "n_households_sample": 3312743,
+  "n_households_weighted": 3312743.0,
+  "avg_household_size": 4.062454588236998,
+  "source": "housing_households_characteristics.xlsx",
+  "solar_split": "electrified - grid-connected per sector, scaled to province solar shares (Table 8.12)",
+  "admin_level": "sector",
+  "n_sectors": 416
+}

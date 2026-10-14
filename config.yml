@@ -16,9 +16,11 @@ grid:
   metric_crs: EPSG:32735  # UTM 35S, used for buffers and distances in Rwanda
 
 labels:
-  # census: Rwanda PHC5 2022 (main source of lighting, h15), aggregated to admin areas
-  # dhs:    Rwanda DHS 2019-20 household recode + GPS clusters
-  source: census
+  # census:        Rwanda PHC5 2022 public microdata (h15, solar separate), needs a NISR login
+  # census_tables: published PHC5 2022 tables, no login; solar vs grid split is estimated
+  #                (see src/solar_markets/census_tables.py)
+  # dhs:           Rwanda DHS 2019-20 household recode + GPS clusters (not implemented yet)
+  source: census_tables
   admin_level: sector     # sector | district
   census:
     # PHC5_Public_microdata_2022 (NISR catalogue 109): one row per person, ~10% sample.
@@ -35,6 +37,9 @@ labels:
     grid_codes: [1]            # electricity from REG
     unserved_codes: [6, 8, 9, 10, 11, 12, 13]  # kerosene, candles, firewood, batteries, flashlight, ...
     missing_codes: [99]        # other valid codes (2, 5, 7, 14) count as "other"
+  census_tables:
+    # NISR "RPHC5 Thematic Report: Housing and Households Characteristics" Excel tables
+    file: census_tables/housing_households_characteristics.xlsx   # under data/raw
   reference: data/reference/rwa_sectors.csv
   name_fixes: data/reference/boundary_name_fixes.csv
   boundaries:
@@ -75,31 +80,35 @@ model:
   random_state: 42
   n_splits: 5
   block_column: district_code   # spatial block for blocked cross-validation
+  # Small trees and strong regularisation: only ~416 sector labels.
   lightgbm:
-    n_estimators: 300
+    n_estimators: 200
     learning_rate: 0.03
-    num_leaves: 15
-    min_child_samples: 10
+    num_leaves: 7
+    min_child_samples: 20
     subsample: 0.8
     subsample_freq: 1
     colsample_bytree: 0.8
-    reg_lambda: 1.0
+    reg_lambda: 5.0
     verbose: -1
 
 calibration:
   # Leave null to use the weighted national values computed by the labels stage
   # (reports/labels_summary.json); set a number to override, e.g. a GOGLA-derived share.
   target_share: null
-  target_source: Rwanda PHC5 2022, standalone solar + private solar mini-grid
+  target_source: Rwanda PHC5 2022, households whose main light is solar
   avg_household_size: null
 
 export:
   normalise_percentiles: [2, 98]
+  # Pixels with fewer people than this are nodata in the penetration layer (parks, lakes).
+  min_population: 5
   nodata: -9999
   version: "0.1 (OSEAS 2026 midpoint)"
   labels_description: >-
-    Rwanda Population and Housing Census 2022 (PHC5, NISR), main source of lighting (h15),
-    household-weighted shares per sector
+    Rwanda Population and Housing Census 2022 (PHC5, NISR), main source of lighting per sector
+    from the published tables C1.3, C1.5 and 8.12 (full census); the solar vs grid split per
+    sector is estimated, see LIMITATIONS.md
   authors: [PAZZO123, irumvag, Raissa12best, Theogene120]
   # The Meta RWI input is CC BY-NC 4.0, so the layers carry its non-commercial term.
   licence: CC BY-NC 4.0 (layers); code under the repository licence

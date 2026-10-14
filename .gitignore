@@ -20,7 +20,9 @@ data/processed/*
 *.sav
 *.zip
 
-# Large or intermediate model artefacts
+# Large or intermediate model artefacts (the EAE layers in outputs/ are committed)
+outputs/*_pred.tif
+outputs/solar_share_calibrated.tif
 models/*
 !models/.gitkeep
 

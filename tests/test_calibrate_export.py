@@ -70,7 +70,8 @@ def test_calibrate_and_export_end_to_end(tmp_path):
     rng = np.random.default_rng(2)
 
     bands = {n: rng.uniform(0, 5, size=grid.shape).astype("float32") for n in cfg["features"]}
-    bands["pop"] = rng.uniform(0, 2000, size=grid.shape).astype("float32")
+    bands["pop"] = rng.uniform(10, 2000, size=grid.shape).astype("float32")
+    bands["pop"][0, 0] = 1.0   # nearly empty pixel: nodata in the penetration layer
     for b in bands.values():
         b[:, -1] = np.nan
     F.write_stack(bands, cfg["features"], grid, processed / "feature_stack.tif")
@@ -110,7 +111,8 @@ def test_calibrate_and_export_end_to_end(tmp_path):
             assert src.nodata == cfg["export"]["nodata"]
             a = src.read(1, masked=True)
         assert a.min() >= 0 and a.max() <= 1 and a.max() == 1
-        assert a.mask[:, -1].all() and not a.mask[:, :-1].any()
+        assert a.mask[:, -1].all() and not a.mask[1:, :-1].any()
+        assert a.mask[0, 0] == (layer["key"] == "penetration")
         meta = yaml.safe_load(tif.with_suffix(".yml").read_text(encoding="utf-8"))
         for key in ["direction", "reference_year", "method", "labels", "features", "limitations",
                     "validation", "calibration", "licence"]:

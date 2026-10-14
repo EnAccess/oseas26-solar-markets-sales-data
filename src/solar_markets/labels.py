@@ -1,6 +1,8 @@
 """Step 1: build survey labels (solar, grid and unserved household shares per area).
 
-Inputs:  census person-level microdata (data/raw/census), sector + district boundaries
+Inputs:  census person-level microdata (data/raw/census) or, without a microdata login, the
+         published census tables (data/raw/census_tables; see census_tables.py),
+         sector + district boundaries
          (data/raw/boundaries), sector code list (data/reference/rwa_sectors.csv)
 Outputs: data/processed/labels.gpkg       one polygon per sector with household shares
          data/processed/labels_district.csv
@@ -159,13 +161,9 @@ def sector_polygons(district_file: Path, sector_file: Path, reference: pd.DataFr
 
 # ---------------------------------------------------------------- pipeline stage
 
-def run(cfg: dict) -> None:
-    paths = get_paths(cfg)
-    lab = cfg["labels"]
-    if lab["source"] != "census":
-        raise NotImplementedError("Only labels.source = census is implemented so far")
-    census_cfg = lab["census"]
-
+def labels_from_microdata(cfg: dict, paths, reference: pd.DataFrame
+                          ) -> tuple[pd.DataFrame, pd.DataFrame, dict, str]:
+    census_cfg = cfg["labels"]["census"]
     path = find_census_file(paths.raw / census_cfg["folder"])
     print(f"Reading {path.name} ...")
     persons = read_census(path, census_cfg["columns"])
@@ -173,27 +171,43 @@ def run(cfg: dict) -> None:
     hh["group"] = classify_lighting(hh["lighting"], census_cfg)
     print(f"  {len(persons):,} person rows -> {len(hh):,} households")
 
+    hh = hh.merge(reference[["sector_code", "district_code"]], on="sector_code", how="left")
+    by_sector = aggregate_shares(hh, "sector_code")
+    by_district = aggregate_shares(hh, "district_code")
+    summary = national_summary(hh)
+    summary["source"] = path.name
+    return by_sector, by_district, summary, "Rwanda PHC5 2022 (NISR), main source of lighting"
+
+
+def run(cfg: dict) -> None:
+    paths = get_paths(cfg)
+    lab = cfg["labels"]
     reference = pd.read_csv(PROJECT_ROOT / lab["reference"])
     fixes = pd.read_csv(PROJECT_ROOT / lab["name_fixes"])
-    hh = hh.merge(reference[["sector_code", "district_code"]], on="sector_code", how="left")
 
-    by_sector = aggregate_shares(hh, "sector_code")
-    by_district = aggregate_shares(hh, "district_code").merge(
+    if lab["source"] == "census":
+        by_sector, by_district, summary, source = labels_from_microdata(cfg, paths, reference)
+    elif lab["source"] == "census_tables":
+        from solar_markets.census_tables import labels_from_tables
+
+        by_sector, by_district, summary, source = labels_from_tables(
+            paths.raw / lab["census_tables"]["file"], reference)
+    else:
+        raise NotImplementedError(f"labels.source = {lab['source']} is not implemented")
+
+    by_district = by_district.merge(
         reference.drop_duplicates("district_code")[["district_code", "district", "province"]],
         on="district_code")
-
     polys = sector_polygons(paths.raw / lab["boundaries"]["district"],
                             paths.raw / lab["boundaries"]["sector"], reference, fixes)
     labels = polys.merge(by_sector, on="sector_code", how="left")
     labels.insert(0, "area_id", labels["sector_code"].astype(int))
-    labels["source"] = "Rwanda PHC5 2022 (NISR), main source of lighting"
+    labels["source"] = source
 
     no_data = labels["solar_share"].isna().sum()
     if no_data:
         print(f"  warning: {no_data} sectors have no census households")
-
-    summary = national_summary(hh)
-    summary.update(source=path.name, admin_level="sector", n_sectors=len(labels))
+    summary.update(admin_level="sector", n_sectors=len(labels))
 
     labels.to_file(paths.processed / "labels.gpkg", layer="sectors", driver="GPKG")
     by_district.to_csv(paths.processed / "labels_district.csv", index=False)

@@ -20,6 +20,7 @@ dependencies:
   - shap
   - matplotlib
   - folium
+  - openpyxl
   - pyreadstat
   - earthengine-api
   - geemap
