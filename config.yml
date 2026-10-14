@@ -69,7 +69,9 @@ feature_data:
   grid_pad_km: 30
 
 model:
-  target: solar_share
+  # One model per target: solar_share is the penetration layer; grid_share feeds the
+  # underserved layer (unserved = 1 - grid - solar, playbook 11.1).
+  targets: [solar_share, grid_share]
   random_state: 42
   n_splits: 5
   block_column: district_code   # spatial block for blocked cross-validation
