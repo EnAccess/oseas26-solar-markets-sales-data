@@ -47,6 +47,14 @@ SOURCE_LAYERS = {  # band -> (layer name, colormap, log)
     "rwi": ("Relative Wealth Index (Meta)", "RdYlGn", False),
 }
 TOP_N = 10
+BASEMAPS = [  # (name, tile url, attribution); the first is shown by default
+    ("Light grey basemap (Esri)",
+     ("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/"
+      "MapServer/tile/{z}/{y}/{x}"),
+     "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ"),
+    ("OpenStreetMap (online only)", "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+     "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"),
+]
 
 
 # ---------------------------------------------------------------- sector summary
@@ -125,7 +133,11 @@ def ranked_panel(top: gpd.GeoDataFrame) -> str:
 def build_map(summary: gpd.GeoDataFrame, rasters: dict[str, tuple[np.ndarray, object]],
               sources: dict[str, np.ndarray], bounds, title: str) -> folium.Map:
     centre = [(bounds.bottom + bounds.top) / 2, (bounds.left + bounds.right) / 2]
-    m = folium.Map(location=centre, zoom_start=9, tiles="OpenStreetMap", control_scale=True)
+    m = folium.Map(location=centre, zoom_start=9, tiles=None, control_scale=True)
+    # Esri's light grey basemap also loads when map.html is opened as a local file;
+    # OpenStreetMap's servers refuse requests without a website address (HTTP 403).
+    for name, url, attr in BASEMAPS:
+        folium.TileLayer(url, name=name, attr=attr, max_zoom=16).add_to(m)
 
     under, pen = rasters["underserved"], rasters["penetration"]
     colour_overlay(under, bounds, "Underserved solar market (0-1)", "magma_r", True,
