@@ -157,7 +157,7 @@ market_gap_score  = energy_need_score x (1 - solar_uptake)      displayed as an 
 ### How the assistant retrieves evidence
 
 `POST /api/assistant/ask` runs a bounded tool-use loop (at most 6 rounds) with Claude
-(`ASSISTANT_MODEL`, default `claude-opus-5-5`) over six read-only tools: `resolve_location`,
+(`ASSISTANT_MODEL`, default `gemini-3.6-flash`) over six read-only tools: `resolve_location`,
 `get_cell_evidence`, `summarize_cells`, `compare_areas`, `get_methodology` and `prepare_report`. Each tool
 calls the same services as the API, so assistant answers use the map's numbers. A deterministic scope
 guard declines unrelated questions before any model call. Tool inputs are validated and size-limited,

@@ -169,7 +169,7 @@ describe("SelectionPanel", () => {
 
 describe("AssistantPanel (docked)", () => {
   it("is collapsed by default and opens like a messaging bar", async () => {
-    api.assistantStatus.mockResolvedValue({ configured: true, model: "claude-opus-5-5" });
+    api.assistantStatus.mockResolvedValue({ configured: true, model: "gemini-3.6-flash" });
     render(<AssistantPanel country="RW" focusedId={null} selectedIds={[]} threshold={0.55} />);
     expect(screen.getByText("Solar Assistant")).toBeTruthy();
     expect(screen.queryByLabelText("Question")).toBeNull();
@@ -198,7 +198,7 @@ describe("AssistantPanel (docked)", () => {
   });
 
   it("renders answers, request errors and starts a new conversation", async () => {
-    api.assistantStatus.mockResolvedValue({ configured: true, model: "claude-opus-5-5" });
+    api.assistantStatus.mockResolvedValue({ configured: true, model: "gemini-3.6-flash" });
     api.ask.mockResolvedValueOnce({ status: "ok", answer: "Ngoma scores 40/100.", evidence: [] })
            .mockRejectedValueOnce(new Error("The request timed out."));
     render(<AssistantPanel country="RW" focusedId={null} selectedIds={["RW_0500"]} threshold={0.55} />);
