@@ -314,6 +314,16 @@
 <script>
 (function () {
   "use strict";
+  if (typeof L === "undefined") {   // the map library comes from the internet; say so instead of a blank page
+    var msg = document.createElement("div");
+    msg.className = "card";
+    msg.setAttribute("role", "alert");
+    msg.style.cssText = "position:fixed;z-index:4000;left:50%;top:40%;transform:translate(-50%,-50%);max-width:340px;padding:18px 20px;text-align:center";
+    msg.innerHTML = "<b>The map could not load.</b><p style='margin:6px 0 12px;color:#44506a'>It needs an internet connection to load the map library. Check the connection and reload.</p>" +
+                    "<button class='btn primary' onclick='location.reload()'>Reload</button>";
+    document.body.appendChild(msg);
+    return;
+  }
   var D = JSON.parse(document.getElementById("map-data").textContent);
   var $ = function (id) { return document.getElementById(id); };
   var mobileQuery = window.matchMedia("(max-width: 899px)");
@@ -420,11 +430,15 @@
   // ---------------------------------------------------------- statistics for comparisons
   var allProps = D.sectors.features.map(function (f) { return f.properties; });
   var sorted = {};
-  function share(metric, v) {   // share of sectors with a lower value
+  function rankAmong(metric, v) {   // how many sectors have a lower and a higher value
     if (!sorted[metric]) sorted[metric] = allProps.map(function (p) { return p[metric]; }).filter(function (x) { return x !== null && isFinite(x); }).sort(function (a, b) { return a - b; });
-    var a = sorted[metric], lo = 0, hi = a.length;
-    while (lo < hi) { var mid = (lo + hi) >> 1; if (a[mid] < v) lo = mid + 1; else hi = mid; }
-    return a.length ? lo / a.length : null;
+    var a = sorted[metric];
+    var firstAtLeast = function (strict) {
+      var lo = 0, hi = a.length;
+      while (lo < hi) { var mid = (lo + hi) >> 1; if (strict ? a[mid] <= v : a[mid] < v) lo = mid + 1; else hi = mid; }
+      return lo;
+    };
+    return a.length ? { below: firstAtLeast(false), above: a.length - firstAtLeast(true), n: a.length } : null;
   }
 
   // ---------------------------------------------------------- layers
@@ -491,9 +505,13 @@
   function compareLine(l, p) {
     var v = p[l.metric], med = D.medians[l.metric];
     if (v === null || v === undefined) return "";
-    var s = share(l.metric, v), pct = s === null ? null : Math.round(100 * s);
-    var txt = "Rwanda median sector: " + fmt(med, l.format);
-    if (pct !== null) txt += " &middot; " + (pct >= 50 ? "higher than " + pct + "% of sectors" : "lower than " + (100 - pct) + "% of sectors");
+    var r = rankAmong(l.metric, v), txt = "Rwanda median sector: " + fmt(med, l.format);
+    if (!r) return txt;
+    var pct = function (k) { return Math.max(1, Math.min(99, Math.round(100 * k / r.n))); };
+    if (r.above === 0) txt += " &middot; the highest of all sectors";
+    else if (r.below === 0) txt += " &middot; the lowest of all sectors";
+    else if (r.below >= r.above) txt += " &middot; higher than " + pct(r.below) + "% of sectors";
+    else txt += " &middot; lower than " + pct(r.above) + "% of sectors";
     return txt;
   }
   function renderInfo(id, here) {
