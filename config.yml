@@ -96,6 +96,13 @@ calibration:
 export:
   normalise_percentiles: [2, 98]
   nodata: -9999
+  version: "0.1 (OSEAS 2026 midpoint)"
+  labels_description: >-
+    Rwanda Population and Housing Census 2022 (PHC5, NISR), main source of lighting (h15),
+    household-weighted shares per sector
+  authors: [PAZZO123, irumvag, Raissa12best, Theogene120]
+  # The Meta RWI input is CC BY-NC 4.0, so the layers carry its non-commercial term.
+  licence: CC BY-NC 4.0 (layers); code under the repository licence
 
 paths:
   raw: data/raw

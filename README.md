@@ -224,6 +224,38 @@ features, with `log1p` applied to `ntl`, `pop`, `travel_min` and `dist_grid`.
   Points far from the diagonal show where the 1 km map disagrees with the sector averages it
   was trained on.
 
+### Calibration
+
+`python -m solar_markets.calibrate` scales the predicted solar share so that predicted solar
+households (share x population / average household size) add up to a national control total.
+Every pixel is shifted by the same constant on the logit scale, so values stay in 0-1 and the
+ranking of places is unchanged: calibration changes how much solar the map shows, not where.
+
+- **Target now:** the census national share and average household size computed by the labels
+  stage (`reports/labels_summary.json`). Set `calibration.target_share` in `config.yml` to use
+  another figure, such as a GOGLA-derived share (the planned upgrade).
+- `reports/calibration.json` records the target, household size, totals before and after, and
+  the shift (|shift| < 0.3 means the model's level was already close). Calibrated pixels are
+  re-aggregated to districts and compared with census district shares
+  (`reports/calibration_districts.csv`, MAE in percentage points).
+
+### Output layers (EAE)
+
+`python -m solar_markets.export` writes two Cloud-Optimised GeoTIFFs to `outputs/`, normalised
+to 0-1 (1 = high), nodata -9999 outside the country, each with a `.yml` metadata sidecar
+(source, year, method, validation, calibration, direction, limitations, licence):
+
+| Layer | File | 1 means | 0 means |
+| --- | --- | --- | --- |
+| Off-grid solar penetration | `rwa_ogs_penetration_2022_1km.tif` | highest predicted share of households using off-grid solar | no predicted solar use |
+| Underserved solar market | `rwa_ogs_underserved_2022_1km.tif` | most households with neither grid nor solar per pixel | none, or nobody lives there |
+
+Unserved households per pixel = households x max(0, 1 - predicted grid share - calibrated solar
+share). Normalisation is a robust min-max between the 2nd and 98th percentiles (after `log1p`
+for the underserved counts), so a few extreme pixels do not squash the rest. The layers are
+licensed CC BY-NC 4.0 because the Meta Relative Wealth Index input is non-commercial.
+Quick-looks for the slides are saved to `reports/`.
+
 ### Development setup
 
 **Option A: conda (recommended on Windows)**
