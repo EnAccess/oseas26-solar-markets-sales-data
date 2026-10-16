@@ -329,11 +329,12 @@ embedded) for desktop and mobile, published with GitHub Pages
 
 - **One layer at a time, with its own legend**: the two results (underserved market, solar
   penetration) and the six clues the model uses (night lights, population, wealth, distance to the
-  grid, travel time, built-up area). Legends are in real units; the top-10 priority pins show on
-  the underserved layer.
+  grid, travel time, built-up area). Legends are in real units and say which colour means more
+  (not every ramp gets darker as values rise); the top-10 priority pins show on the underserved
+  layer.
 - **Sector details follow the active layer**: its value, the Rwanda median sector and the share of
   sectors below it, how homes are lit (census 2022), the model estimate, the three SHAP drivers,
-  and a table of every layer for that sector (click a row to switch the map to it).
+  and a table of every layer for that sector with its unit (click a row to switch the map to it).
 - **Search** any of Rwanda's 416 sectors or 30 districts, or coordinates inside Rwanda.
 - **My location** finds the sector you are in and opens its overview (the position stays in the
   browser).
