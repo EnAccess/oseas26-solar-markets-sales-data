@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     backend_url: str = "http://localhost:8000"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    demo_mode: bool = True
+    demo_mode: bool = False
     default_country: str = "RW"
     grid_resolution_km: float = 5.0
 
@@ -44,13 +44,19 @@ class Settings(BaseSettings):
     min_training_cells: int = 30
 
     # Potential Market Gap Indicator
-    underserved_threshold: float = 0.30
+    # Relative cut-off on the 0-1 market_gap_score (~top fifth of scored Rwandan cells in the current build).
+    underserved_threshold: float = 0.55
     high_penetration_threshold: float = 0.66
     low_penetration_threshold: float = 0.33
     need_w_population: float = 0.4
     need_w_grid_distance: float = 0.4
     need_w_darkness: float = 0.2
     avg_household_size: float = 4.3
+
+    # AI assistant (backend only; the key never reaches the browser)
+    anthropic_api_key: str | None = None
+    assistant_model: str = "gemini-3.8-flash"
+    assistant_timeout_s: float = 60.0
 
     @property
     def feature_list(self) -> list[str]:

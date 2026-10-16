@@ -1,14 +1,20 @@
 # Backend
 
-FastAPI service. See the root README for the full guide.
+FastAPI service. Full guide: the "Implementation" section of the root README.
 
 ```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
+python -m venv .venv && .venv\Scripts\activate     # macOS/Linux: source .venv/bin/activate
+pip install -r requirements-dev.txt
 cp .env.example .env
-uvicorn app.main:app --reload          # API docs: http://localhost:8000/docs
-python -m app.ml.train --country RW    # rebuild dataset, retrain, rewrite outputs
+uvicorn app.main:app --reload                       # API docs: http://localhost:8000/docs
+python -m pytest -q                                 # tests
+python -m app.pipeline.build                        # rebuild data/processed/RW from data/raw/RW
 ```
 
-Layout: `app/pipeline` (data), `app/ml` (training, validation, prediction), `app/services` (logic),
-`app/api` (routers), `app/schemas` (Pydantic). Artefacts: `data/processed`, `models`, `outputs` (per country code).
+Layout: `app/pipeline` (ingestion, cleaning, survey join, build), `app/services` (market gap, data cache,
+map layers, cell evidence, locations, reports, assistant), `app/api` (routers; `api/ml` holds model
+training), `app/schemas` (Pydantic), `scripts/` (data refresh), `tests/`.
+
+Night-light ingest: `powershell -ExecutionPolicy Bypass -File scripts/schedule/weekly_nightlights.ps1`
+(needs `NASA_EARTHDATA_TOKEN`). The API reads `data/processed/RW/cells_with_nightlights.csv` through the
+build pipeline and never calls NASA.

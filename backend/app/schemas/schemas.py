@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -13,7 +15,7 @@ class CountryInfo(BaseModel):
     center: tuple[float, float]
     zoom: int
     bbox: tuple[float, float, float, float]
-    ready: bool = Field(description="True once predictions exist for this country")
+    ready: bool = Field(description="True once a dataset exists for this country")
 
 
 class AppMeta(BaseModel):
@@ -28,6 +30,12 @@ class AppMeta(BaseModel):
     features: list[str]
     underserved_threshold: float
     disclaimer: str
+    training_labels: str | None = None
+    built_at: str | None = None
+    sources: dict[str, dict[str, Any]] = {}
+    assumptions: dict[str, Any] = {}
+    model_status: dict[str, Any] = {}
+    method: dict[str, str] = {}
 
 
 class LayerInfo(BaseModel):
@@ -35,34 +43,74 @@ class LayerInfo(BaseModel):
     name: str
     description: str
     unit: str
+    selector: bool = True
+    kind: str | None = None
+    source: str | None = None
+
+
+class Indicator(BaseModel):
+    key: str
+    label: str
+    value: float | None = None
+    display_value: float | None = None
+    formatted: str
+    unit: str
+    kind: str
+    kind_label: str
+    source: str
+    source_year: str | None = None
+    status: str
+    description: str
+
+
+class Driver(BaseModel):
+    factor: str
+    value: float | None = None
+    note: str
 
 
 class CellDetails(BaseModel):
     cell_id: str
+    place_name: str | None = None
+    admin_cell: str | None = None
+    admin_sector: str | None = None
     country: str
     latitude: float
     longitude: float
-    population: float
-    population_density: float
-    nighttime_radiance: float
-    relative_wealth: float
-    distance_to_grid_km: float
-    distance_to_minigrid_km: float
-    grid_presence: int
-    solar_resource: float
+    district: str | None = None
+    province: str | None = None
+    population: float | None = None
+    population_density: float | None = None
+    relative_wealth: float | None = None
+    relative_wealth_observed: bool | None = None
+    nighttime_radiance: float | None = None
+    distance_to_grid_km: float | None = None
+    grid_presence: int | None = None
+    survey_solar_share: float | None = None
+    survey_solar_hh_sampled: float | None = None
+    # Model-derived: None unless the model was trained on real labels for this dataset.
+    predicted_solar_penetration: float | None = None
     observed_solar_penetration: float | None = None
-    predicted_solar_penetration: float
-    energy_need_score: float
-    market_gap_score: float
-    potentially_underserved: bool
+    energy_need_score: float | None = None
+    solar_uptake: float | None = None
+    uptake_source: str | None = None
+    uptake_source_label: str | None = None
+    market_gap_score: float | None = Field(None, description="0-1 relative opportunity score")
+    opportunity_score: int | None = Field(None, description="market_gap_score as an integer 0-100")
+    evidence_level: str | None = None
+    missing_inputs: list[str] = []
+    potentially_underserved: bool | None = None
+    drivers: list[Driver] = []
+    indicators: list[Indicator] = []
+    model_status: dict[str, Any] = {}
     interpretation: str
     is_demo: bool
 
 
 class MetricSet(BaseModel):
-    mae: float
-    rmse: float
-    r2: float
+    mae: float | None = None
+    rmse: float | None = None
+    r2: float | None = None
     n_folds: int | None = None
     n_evaluated: int | None = None
     n_blocks: int | None = None
@@ -87,6 +135,7 @@ class ModelPerformance(BaseModel):
     spatial_cv: MetricSet
     models: dict[str, ModelResult]
     note: str
+    usable: bool = False
 
 
 class FeatureImportanceItem(BaseModel):
@@ -111,25 +160,30 @@ class Statistics(BaseModel):
     total_area_km2: float
     total_population: float
     n_cells: int
-    avg_predicted_penetration: float
-    population_weighted_penetration: float
-    potentially_underserved_cells: int
-    population_in_gap_areas: float
-    high_penetration_cells: int
-    low_penetration_cells: int
-    model_r2_random: float
-    model_r2_spatial: float
+    n_scored_cells: int | None = None
+    avg_predicted_penetration: float | None = None
+    population_weighted_penetration: float | None = None
+    potentially_underserved_cells: int | None = None
+    population_in_gap_areas: float | None = None
+    high_penetration_cells: int | None = None
+    low_penetration_cells: int | None = None
+    model_r2_random: float | None = None
+    model_r2_spatial: float | None = None
 
 
 class DataSource(BaseModel):
     id: str
     name: str
     description: str
-    year: str
     resolution: str
     role: str
     limitations: str
-    demo_substitute: str
+    status: str = Field(description="real | missing | synthetic")
+    date: str | None = None
+    licence: str | None = None
+    file: str | None = None
+    retrieved_at: str | None = None
+    note: str | None = None
 
 
 class GoglaRow(BaseModel):

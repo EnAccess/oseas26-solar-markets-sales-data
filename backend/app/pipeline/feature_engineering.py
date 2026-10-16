@@ -23,18 +23,21 @@ def _union(gdf: gpd.GeoDataFrame):
 
 
 def distance_to_geoms_km(grid: gpd.GeoDataFrame, geoms: gpd.GeoDataFrame | None, epsg: int) -> np.ndarray:
-    """Distance (km) from every cell centroid to the nearest geometry, capped at DISTANCE_CAP_KM."""
+    """Distance (km) from every cell centroid to the nearest geometry, capped at DISTANCE_CAP_KM.
+
+    No source geometries means the distance is unknown (NaN), not "far away".
+    """
     if geoms is None or geoms.empty:
-        return np.full(len(grid), DISTANCE_CAP_KM)
+        return np.full(len(grid), np.nan)
     pts = gpd.GeoSeries(gpd.points_from_xy(grid["lon"], grid["lat"]), crs=WGS84).to_crs(epsg=epsg)
     union = _union(geoms.to_crs(epsg=epsg))
     return np.minimum(pts.distance(union).to_numpy() / 1000.0, DISTANCE_CAP_KM)
 
 
 def presence_in_cell(grid: gpd.GeoDataFrame, geoms: gpd.GeoDataFrame | None) -> np.ndarray:
-    """1 if any geometry intersects the cell polygon, else 0."""
+    """1 if any geometry intersects the cell polygon, else 0. NaN when there is no source data."""
     if geoms is None or geoms.empty:
-        return np.zeros(len(grid), dtype=int)
+        return np.full(len(grid), np.nan)
     union = _union(geoms.to_crs(WGS84))
     return grid.geometry.intersects(union).to_numpy().astype(int)
 
@@ -53,6 +56,10 @@ def build_feature_frame(grid: gpd.GeoDataFrame, raw: "RawLayers", country: Count
     df["population_total"] = df["population_density"] * res_km**2
     df["nighttime_radiance"] = np.asarray(raw.nighttime_radiance, dtype=float)
     df["relative_wealth"] = np.asarray(raw.relative_wealth, dtype=float)
+    if raw.relative_wealth_observed is not None:
+        df["relative_wealth_observed"] = raw.relative_wealth_observed.astype(bool)
+    else:
+        df["relative_wealth_observed"] = True  # demo mode: every synthetic cell has a value
     df["solar_resource"] = np.asarray(raw.solar_resource, dtype=float)
     df["distance_to_grid_km"] = distance_to_geoms_km(grid, raw.grid_lines, country.utm_epsg)
     df["grid_presence"] = presence_in_cell(grid, raw.grid_lines)

@@ -36,11 +36,16 @@ export default function ModelPage({ country, meta }) {
 
   return (
     <div className="stack">
-      <h2 className="page-title">Model performance</h2>
+      <h2 className="page-title">Solar penetration model</h2>
+      <p className={meta.model_status?.usable ? "callout" : "callout warn"}>
+        {meta.model_status?.usable
+          ? "Predictions from this model are used as solar uptake evidence in the market-gap score."
+          : `Not used in the app. ${meta.model_status?.reason}`}
+      </p>
       <AsyncView state={perf}>
         {(p) => (
           <>
-            <p className={p.is_demo ? "callout demo" : "callout"}>{p.note}</p>
+            <p className={p.is_demo ? "callout warn" : "callout"}>{p.note}</p>
             <p className="muted">
               Selected model: <strong>{MODEL_NAMES[p.selected_model] ?? p.selected_model}</strong> ({p.selection_criterion}).
               Trained on {p.n_samples} labelled grid cells at {meta.grid_resolution_km} km resolution.
