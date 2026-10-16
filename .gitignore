@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Secrets and local settings
+.env
+
+# Data: raw survey microdata (DHS, census) must never be committed (licence terms).
+data/raw/*
+data/interim/*
+data/processed/*
+!data/**/.gitkeep
+*.dta
+*.sav
+*.zip
+
+# Large or intermediate model artefacts (the EAE layers in outputs/ are committed)
+outputs/*_pred.tif
+outputs/solar_share_calibrated.tif
+models/*
+!models/.gitkeep
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

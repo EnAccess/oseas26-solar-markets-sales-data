@@ -163,3 +163,249 @@ it operates at, because that determines the job it can do:
   - [Energy Access Explorer](https://www.energyaccessexplorer.org)
   - [EAE GitHub](https://github.com/energyaccessexplorer)
   - [EAE Technical Note](https://www.wri.org/research/energy-access-explorer-data-and-methods?ap3c=IGaj6AgspJqgeKwBAGaj6AgmzCZ5Iv70Fr7H6ahniwtFr1FOgg)
+
+---
+
+## Our solution (work in progress)
+
+We are building the market-reality layer for **Rwanda** at 1 km resolution:
+
+1. **Labels:** share of households using off-grid solar for lighting, from the Rwanda
+   Population and Housing Census 2022 (sector level), upgraded later to DHS 2019-20 GPS clusters.
+2. **Features:** VIIRS night lights, WorldPop population, Meta Relative Wealth Index,
+   distance to grid (Gridfinder), travel time to cities and built-up share.
+3. **Model:** LightGBM, with random and blocked (by district) cross-validation and SHAP
+   feature analysis framed as hypotheses.
+4. **Calibration:** logit shift so the national total matches a control total (census now,
+   GOGLA sales next).
+5. **Outputs:** two EAE-conformant 0-1 rasters (off-grid solar penetration, underserved
+   market) with metadata, a limitations statement and an interactive map.
+
+### Results (midpoint, Rwanda 2022)
+
+| CV scheme | Target | Mean baseline R² | Linear R² | LightGBM R² | LightGBM MAE |
+| --- | --- | --- | --- | --- | --- |
+| Random 5-fold | solar share | −0.02 | 0.26 | 0.31 | 7.6 pp |
+| Blocked by district | solar share | −0.04 | 0.23 | **0.21** | **8.0 pp** |
+| Random 5-fold | grid share | −0.01 | 0.62 | 0.67 | 10.5 pp |
+| Blocked by district | grid share | −0.02 | 0.61 | **0.63** | **11.3 pp** |
+
+416 sectors, full `reports/cv_results.csv`. Random CV overstates accuracy because neighbouring
+sectors are similar; the blocked score is what to expect in a district the model has never
+seen. Grid access is predictable from what satellites see; solar use much less so. Under
+blocked CV LightGBM does not beat a linear model on solar share, which we report as a finding:
+with 416 labels and an estimated solar/grid split, the signal is weak.
+
+After calibration (logit shift −0.06: the model's national level was already close), pixel
+predictions averaged back to districts differ from the census by 4.3 pp on average; the worst
+district is Nyaruguru (−16.9 pp), whose unusually high solar use (39%) the model under-predicts.
+
+**Feature analysis, as hypotheses (associations in the model, not causes)**
+(`reports/feature_importance.png`, `reports/feature_effects.csv`):
+
+- **H1.** Sectors with lower population density and less built-up land have higher predicted
+  solar penetration: solar fills in where the grid is thin.
+- **H2.** Longer travel time to a city goes with higher predicted solar penetration.
+- **H3.** Distance to the grid alone is a weaker signal than density: the most remote pixels
+  are not the ones with the most solar, consistent with remote, poor areas being reached by
+  neither grid nor solar companies.
+- **H4.** Grid share rises with built-up area, night lights, density and wealth, as expected.
+
+**Independent check with the Rwanda DHS 2025 survey** (`python -m solar_markets.validate`,
+`reports/dhs_validation.*`). DHS 2025 asked 14,427 households their main type of light, with
+solar separate from grid, and is designed for district estimates. Across the 30 districts:
+
+| Compared with DHS 2025 | Correlation r | Rank correlation | Ours − DHS (level) |
+| --- | --- | --- | --- |
+| Solar share, census labels (estimated solar/grid split) | 0.79 | 0.76 | −6.0 pp |
+| Solar share, our calibrated 1 km model | 0.84 | 0.71 | −6.7 pp |
+| Grid share, census labels | 0.91 | 0.82 | −6.8 pp |
+| Neither grid nor solar, census labels | 0.68 | 0.51 | +12.4 pp |
+
+The district pattern of our solar estimates agrees with an independent survey, which supports
+the estimated solar/grid split. The level gap is three years of growth: nationally DHS 2025
+finds solar 19.6%, grid 53.9% and neither 26.5%, against 13.9%, 47.1% and 38.5% in the 2022
+census. Only district aggregates are written; DHS household data stays in `data/raw`.
+
+### Labels
+
+`python -m solar_markets.labels` builds one row per sector (416) with the share of households
+whose main light is grid electricity, solar, an unserved source (kerosene, candles, firewood,
+batteries, flashlight, lantern) or other. Two sources, set by `labels.source` in `config.yml`:
+
+- **`census_tables` (current, no login):** the published PHC5 2022 tables, which cover the full
+  census (3.3 million households). The sector table reports grid and solar together as
+  "electricity", so the **electrified** and **unserved** shares per sector are measured, but the
+  **split into solar and grid is estimated**: solar ≈ electrified − grid-connected per sector,
+  scaled within each province to the published province solar share (Table 8.12) and capped at
+  the electrified share. National result: solar 13.9%, grid 47.1%, unserved 38.5%, matching the
+  published national figures.
+- **`census` (preferred when available):** the public microdata (10% sample, needs a NISR
+  microdata account), which reports solar separately for each household, so no split is
+  needed. Switching is one line in `config.yml`.
+
+### Features
+
+`python -m solar_markets.features` builds `data/processed/feature_stack.tif`: one band per
+feature on a 30 arc-second grid (~0.93 km, EPSG:4326, 258 x 228 pixels over Rwanda), NaN
+outside the country. Earth Engine bands are aggregated on the server onto exactly this grid
+and cached in `data/interim/ee_stack.tif`.
+
+| Band | Meaning | Source | Year | Native resolution | Aggregation to 1 km | Model transform | Licence |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ntl` | night-time radiance (nW/cm²/sr) | VIIRS annual V2.2 (`NOAA/VIIRS/DNB/ANNUAL_V22`, band `average`) | 2022 | ~460 m | mean | log1p | CC BY 4.0 (EOG) |
+| `pop` | people per pixel | WorldPop (`WorldPop/GP/100m/pop`) | 2020 | 100 m | sum | log1p | CC BY 4.0 |
+| `travel_min` | minutes to the nearest city | Oxford MAP (`projects/malariaatlasproject/assets/accessibility/accessibility_to_cities/2015_v1_0`) | 2015 | ~1 km | mean | log1p | CC BY 4.0 |
+| `built` | share of built-up land | ESA WorldCover v200, class 50 (`ESA/WorldCover/v200`) | 2021 | 10 m | mean | none | CC BY 4.0 |
+| `rwi` | Relative Wealth Index | Meta RWI (HDX) | 2021 | ~2.4 km points | nearest point | none | CC BY-NC 4.0 |
+| `dist_grid` | km to the nearest grid line | Gridfinder (Zenodo 3628142) | 2020 | vector | distance from pixel centre | log1p | CC BY 4.0 |
+
+Distance to the grid is measured on a raster padded by 30 km, so lines just across the border
+count. The training table (`data/processed/train_table.csv`, one row per sector) holds the
+**population-weighted mean** of each band inside the sector (plain mean for `pop`), so the
+features describe where people live rather than empty land. Sectors smaller than one pixel take
+the pixel under their centre. A quick-look of every band is saved to `reports/feature_bands.png`.
+
+### Model and validation
+
+`python -m solar_markets.model` trains one LightGBM regression per target in `config.yml`
+(`solar_share` for the penetration layer, `grid_share` for the underserved layer) on the six
+features, with `log1p` applied to `ntl`, `pop`, `travel_min` and `dist_grid`.
+
+- **Two cross-validation schemes**, both in `reports/cv_results.csv`: random 5-fold, and
+  blocked 5-fold where whole districts are held out together. Neighbouring sectors are similar,
+  so random CV is optimistic; the blocked score is what to expect in a district the model has
+  never seen. Each scheme compares LightGBM with two baselines (national mean, linear
+  regression). `mae_pp` is the mean absolute error in percentage points.
+- **Feature analysis as hypotheses:** SHAP values of the final model (`reports/feature_importance.png`,
+  `reports/feature_effects.csv`). `direction` `+` means higher values of the feature go with
+  higher predictions. This is an association, not a cause.
+- **Prediction:** every pixel with all features present, clipped to 0-1, written to
+  `outputs/<target>_pred.tif`.
+- **Change-of-support check:** pixel predictions averaged back to sectors (population-weighted)
+  and compared with the labels (`reports/reaggregation.csv`, `reports/reaggregation.png`).
+  Points far from the diagonal show where the 1 km map disagrees with the sector averages it
+  was trained on.
+
+### Calibration
+
+`python -m solar_markets.calibrate` scales the predicted solar share so that predicted solar
+households (share x population / average household size) add up to a national control total.
+Every pixel is shifted by the same constant on the logit scale, so values stay in 0-1 and the
+ranking of places is unchanged: calibration changes how much solar the map shows, not where.
+
+- **Target now:** the census national share and average household size computed by the labels
+  stage (`reports/labels_summary.json`). Set `calibration.target_share` in `config.yml` to use
+  another figure, such as a GOGLA-derived share (the planned upgrade).
+- `reports/calibration.json` records the target, household size, totals before and after, and
+  the shift (|shift| < 0.3 means the model's level was already close). Calibrated pixels are
+  re-aggregated to districts and compared with census district shares
+  (`reports/calibration_districts.csv`, MAE in percentage points).
+
+### Output layers (EAE)
+
+`python -m solar_markets.export` writes two Cloud-Optimised GeoTIFFs to `outputs/`, normalised
+to 0-1 (1 = high), nodata -9999 outside the country, each with a `.yml` metadata sidecar
+(source, year, method, validation, calibration, direction, limitations, licence):
+
+| Layer | File | 1 means | 0 means |
+| --- | --- | --- | --- |
+| Off-grid solar penetration | `rwa_ogs_penetration_2022_1km.tif` | highest predicted share of households using off-grid solar | no predicted solar use |
+| Underserved solar market | `rwa_ogs_underserved_2022_1km.tif` | most households with neither grid nor solar per pixel | none, or nobody lives there |
+
+Unserved households per pixel = households x max(0, 1 - predicted grid share - calibrated solar
+share). Normalisation is a robust min-max between the 2nd and 98th percentiles, so a few extreme
+pixels do not squash the rest; counts are kept linear so the largest unserved populations stand
+out. The penetration layer is nodata where fewer than 5 people live in a pixel (national parks,
+lakes): a household share means nothing there. The layers are
+licensed CC BY-NC 4.0 because the Meta Relative Wealth Index input is non-commercial.
+Quick-looks for the slides are saved to `reports/`.
+
+### Interactive map
+
+`python -m solar_markets.webmap` writes `docs/map.html`, one self-contained page (Leaflet, data
+embedded) for desktop and mobile, published with GitHub Pages
+(<https://pazzo123.github.io/oseas26-solar-markets-sales-data/map.html>):
+
+- **One layer at a time, with its own legend**: the two results (underserved market, solar
+  penetration) and the six clues the model uses (night lights, population, wealth, distance to the
+  grid, travel time, built-up area). Legends are in real units and say which colour means more
+  (not every ramp gets darker as values rise); the top-10 priority pins show on the underserved
+  layer.
+- **Sector details follow the active layer**: its value, the Rwanda median sector and the share of
+  sectors below it, how homes are lit (census 2022), the model estimate, the three SHAP drivers,
+  and a table of every layer for that sector with its unit (click a row to switch the map to it).
+- **Search** any of Rwanda's 416 sectors or 30 districts, or coordinates inside Rwanda.
+- **My location** finds the sector you are in and opens its overview (the position stays in the
+  browser).
+- **Guided tour** on the first visit (remembered in the browser; the ? button reopens it).
+- **Mobile**: search at the top, a summary chip of the current settings, the location button near
+  the top, a full-screen settings screen with a back button, and a bottom sheet for details.
+- **Shareable links**: the address remembers the layer and sector, e.g.
+  `map.html#layer=underserved&sector=5212`.
+- Background: Esri grey or satellite imagery, with place names on top (Esri tiles also load when
+  the file is opened locally).
+
+The full ranking is in `reports/top_underserved_sectors.csv` and the per-sector table in
+`data/processed/sector_summary.gpkg`. The page layout lives in
+`src/solar_markets/webmap_template.html`.
+
+### Limitations
+
+What the model cannot see, where it will be wrong and who it might misallocate capital toward
+is in [`LIMITATIONS.md`](LIMITATIONS.md). Read it before using the layers for decisions.
+
+### Development setup
+
+**Option A: conda (recommended on Windows)**
+
+```bash
+conda env create -f environment.yml
+conda activate solar-markets
+```
+
+**Option B: pip + venv (Python 3.10+)**
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate          # Windows (macOS/Linux: source .venv/bin/activate)
+pip install -e ".[dev]"
+```
+
+Then:
+
+```bash
+cp .env.example .env                           # set GEE_PROJECT to your Earth Engine project
+python -m solar_markets.check_setup            # libraries, config, folders
+python -m solar_markets.check_setup --gee      # also connects to Earth Engine
+pytest
+```
+
+Download the input data as described in [`data/README.md`](data/README.md). Survey microdata
+must never be committed.
+
+### Running the pipeline
+
+Each stage reads `config.yml` and writes one output that the next stage reads:
+
+```bash
+python -m solar_markets.labels     # data/processed/labels.gpkg
+python -m solar_markets.features   # data/processed/feature_stack.tif, train_table.csv
+python -m solar_markets.model      # reports/cv_results.csv, outputs/solar_share_pred.tif
+python -m solar_markets.calibrate  # outputs/solar_share_calibrated.tif
+python -m solar_markets.export     # outputs/rwa_ogs_*.tif + .yml metadata
+python -m solar_markets.webmap     # docs/map.html
+python -m solar_markets.validate   # reports/dhs_validation.* (needs the DHS 2025 file)
+```
+
+### Repository layout
+
+```
+config.yml               country, year, resolution, features, model settings
+src/solar_markets/       one module per pipeline stage + config and setup check
+tests/                   config tests; EAE conformance tests for exported layers
+data/                    raw / interim / processed (git-ignored, see data/README.md)
+outputs/                 final rasters and metadata
+reports/                 cross-validation results and figures
+docs/                    interactive map (GitHub Pages)
+```

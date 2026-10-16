@@ -1,0 +1,15 @@
+{
+  "target_share": 0.13918123228997842,
+  "target_source": "Rwanda PHC5 2022, households whose main light is solar (labels_summary.json)",
+  "avg_household_size": 4.062454588236998,
+  "households_total": 3386435.75,
+  "solar_households_before": 495298.6875,
+  "solar_households_after": 471328.28125,
+  "solar_households_target": 471328.3007558373,
+  "logit_shift": -0.06166464054707811,
+  "district_mae_pp": 4.261590537965394,
+  "district_worst": {
+    "district": "Nyaruguru",
+    "error_pp": -16.861553356099535
+  }
+}
