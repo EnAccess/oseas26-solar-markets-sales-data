@@ -55,7 +55,7 @@ class Settings(BaseSettings):
 
     # AI assistant (backend only; the key never reaches the browser)
     anthropic_api_key: str | None = None
-    assistant_model: str = "claude-opus-5-5"
+    assistant_model: str = "gemini-3.8-flash"
     assistant_timeout_s: float = 60.0
 
     @property
