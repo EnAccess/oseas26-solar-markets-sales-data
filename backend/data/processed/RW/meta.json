@@ -1,0 +1,109 @@
+{
+  "country": "RW",
+  "country_name": "Rwanda",
+  "is_demo": false,
+  "training_labels": "not_written",
+  "grid_spec": {
+    "min_lon": 28.8,
+    "max_lat": -1.0,
+    "deg": 0.044915558749550846,
+    "n_rows": 43,
+    "n_cols": 48,
+    "res_km": 5.0
+  },
+  "n_cells": 1203,
+  "n_labelled_cells": 0,
+  "bounds": [
+    28.844915558749552,
+    -2.841537908731585,
+    30.86611570247934,
+    -1.0449155587495509
+  ],
+  "built_at": "2026-10-12T22:36:43.802168+00:00",
+  "assumptions": {
+    "avg_household_size": 4.3
+  },
+  "sources": {
+    "population": {
+      "status": "real",
+      "file": "data/raw/RW/population.tif",
+      "url": "https://data.worldpop.org/GIS/Population/Global_2000_2020_1km/2020/RWA/rwa_ppp_2020_1km_Aggregated.tif",
+      "dataset": "WorldPop Global 2000-2020, 1 km aggregated, unconstrained (ppp)",
+      "year": "2020",
+      "unit": "people per pixel (~1 km)",
+      "licence": "CC BY 4.0",
+      "citation": "WorldPop (www.worldpop.org), University of Southampton. doi:10.5258/SOTON/WP00647",
+      "retrieved_at": "2026-10-12T21:34:43.162371+00:00",
+      "bytes": 130965
+    },
+    "relative_wealth": {
+      "status": "real",
+      "file": "data/raw/RW/relative_wealth.csv",
+      "url": "https://data.humdata.org/dataset/76f2a2ea-ba50-40f5-b79c-db95d668b843/resource/254e5daf-1ab0-47db-b40d-4abc2476e4ab/download/rwa_relative_wealth_index.csv",
+      "dataset": "Meta Relative Wealth Index - Rwanda (Humanitarian Data Exchange)",
+      "year": "2021 (HDX dataset date range 2021-04-01 to 2023-02-17)",
+      "unit": "RWI (relative, unitless; 0 = national mean)",
+      "licence": "CC BY-NC 4.0",
+      "citation": "Chi et al. (2022) Microestimates of wealth for all low- and middle-income countries. PNAS.",
+      "retrieved_at": "2026-10-12T21:35:06.211087+00:00",
+      "bytes": 128674
+    },
+    "night_lights": {
+      "status": "real",
+      "file": "data/processed/RW/cells_with_nightlights.csv",
+      "dataset": "NASA Black Marble VNP46A2 (VIIRS day/night band), sampled at cell centres via LAADS",
+      "unit": "nW/cm2/sr",
+      "requested_start": null,
+      "requested_end": null,
+      "note": "Single-day sample per cell (latest granule within 30 days before the ingest date). The raw snapshot metadata is not present in this checkout, so the acquisition date cannot be verified here."
+    },
+    "solar_resource": {
+      "status": "missing",
+      "note": "Global Solar Atlas GHI raster not supplied."
+    },
+    "grid": {
+      "status": "real",
+      "file": "data/raw/RW/grid.geojson",
+      "source": "OpenStreetMap contributors via Overpass API",
+      "licence": "ODbL 1.0",
+      "endpoint": "https://overpass-api.de/api/interpreter",
+      "query": "[out:json][timeout:240];(way[\"power\"~\"^(line|minor_line|cable)$\"](-2.9,28.8,-1.0,30.95);way[\"power\"~\"^(substation|plant)$\"](-2.9,28.8,-1.0,30.95);node[\"power\"~\"^(substation|plant)$\"](-2.9,28.8,-1.0,30.95););out geom tags;",
+      "osm_snapshot": "2026-10-12T20:32:50Z",
+      "retrieved_at": "2026-10-12T20:37:58.240215+00:00",
+      "counts": {
+        "lines": 138,
+        "facilities": 100
+      }
+    },
+    "minigrids": {
+      "status": "missing",
+      "note": "No verified minigrid dataset is available in the repository."
+    },
+    "surveys": {
+      "status": "missing",
+      "note": "No georeferenced (GPS) survey clusters; model labels cannot be built."
+    },
+    "gogla": {
+      "status": "missing",
+      "note": "No GOGLA table supplied."
+    },
+    "survey": {
+      "status": "real",
+      "file": "data/processed/RW/Household_Solar_Device_Use_and_Ownership.csv",
+      "dataset": "Multi-Tier Framework (MTF) household survey, solar device module (Rwanda)",
+      "resolution": "District (no household GPS)",
+      "note": "Survey year is not recorded in the file. The file lists solar-device owners only."
+    },
+    "districts": {
+      "status": "real",
+      "file": "data/processed/RW/rwanda_districts.geojson",
+      "dataset": "GADM level-2 administrative boundaries"
+    },
+    "place_names": {
+      "status": "real",
+      "file": "data/processed/RW/cell_admin_names.csv",
+      "dataset": "Administrative cell names (rwanda-location-lookup boundaries)",
+      "note": "Name of the administrative cell containing each 5 km analysis cell's centre."
+    }
+  }
+}

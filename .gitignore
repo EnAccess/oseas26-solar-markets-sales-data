@@ -1,0 +1,15 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+venv/
+.venv/
+.env
+backend/data/raw/*
+!backend/data/raw/.gitkeep
+backend/models/*
+!backend/models/.gitkeep
+backend/outputs/*
+!backend/outputs/.gitkeep
+venv312
+package-lock.json

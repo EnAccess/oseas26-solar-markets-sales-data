@@ -1,0 +1,32 @@
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env.example
+    environment:
+      CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/models:/app/models
+      - ./backend/outputs:/app/outputs
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_PROXY_TARGET: http://backend:8000
+    volumes:
+      - ./frontend/src:/app/src
+    ports: ["5173:5173"]
+    depends_on: [backend]
+
+  # Optional: PostGIS is NOT needed for the prototype. Uncomment when moving to a database.
+  # db:
+  #   image: postgis/postgis:16-3.4
+  #   environment: { POSTGRES_PASSWORD: change-me, POSTGRES_DB: smr }
+  #   ports: ["5432:5432"]
